@@ -170,7 +170,7 @@ export function registerFixTools(server: McpServer, principal: Principal, run: R
       title: "Dismiss fixes",
       description: `Takes fixes off the list because they're not worth doing or are that way on purpose, such as a page meant to stay out of Google. Later audits leave them alone, and they can be reopened in SEOpen. Up to ${MAX_APPLY} at once. Without confirm: true it changes nothing and says what it would do. Dismissing is the user's decision.`,
       inputSchema: z.object({ project, ids: ids(MAX_APPLY), reason: z.string().max(300).optional(), confirm }),
-      annotations: RECORDS,
+      annotations: { ...RECORDS, destructiveHint: true },
     },
     (args) =>
       run("dismiss_fix", async () => {

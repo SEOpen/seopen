@@ -317,9 +317,11 @@ describe.skipIf(!ready)("MCP endpoint", () => {
         "link_gap",
         "get_page_refresh",
       ]);
+      // Lookups can spend with max_credits, and an inspection is saved, so a client asks before running them.
+      const NOT_READ_ONLY = ["inspect_url", "keyword_overview", "keyword_ideas", "serp", "domain_overview", "domain_keywords", "domain_competitors", "backlinks_summary", "referring_domains", "domain_pages", "linked_pages", "link_gap", "get_page_refresh"];
       for (const t of tools) {
         expect(t.title, t.name).toBeTruthy();
-        expect(t.annotations?.readOnlyHint, t.name).toBe(true);
+        expect(t.annotations?.readOnlyHint, t.name).toBe(!NOT_READ_ONLY.includes(t.name));
         expect(t.annotations?.destructiveHint, t.name).toBe(false);
       }
     });
@@ -1084,6 +1086,8 @@ describe.skipIf(!ready)("MCP endpoint", () => {
   });
 
   describe("write tools", () => {
+    /** Overwrites a setting or a status, or sends something that can't be called back. */
+    const DESTRUCTIVE = ["dismiss_fix", "submit_indexnow", "update_ai_action_status", "update_alert_rule"];
     const WRITE_TOOLS = [
       "create_project",
       "add_competitors",
@@ -1116,7 +1120,7 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       spender = await connect((await keys.createApiKey({ workspaceId: W.ws.id, userId: W.user.id }, { name: "spender", write: true, research: true })).key, "modern");
     });
 
-    it("are offered only to a key with the write scope, and none is read-only or destructive", async () => {
+    it("are offered only to a key with the write scope, none is read-only, and only those that overwrite or send are destructive", async () => {
       const read = await (await connect(W.key, "modern")).listTools();
       expect(read.tools.map((t) => t.name)).not.toContain("create_project");
       const { tools } = await client.listTools();
@@ -1125,8 +1129,8 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       for (const t of tools.filter((t) => WRITE_TOOLS.includes(t.name))) {
         expect(t.title, t.name).toBeTruthy();
         expect(t.annotations?.readOnlyHint, t.name).toBe(false);
-        expect(t.annotations?.destructiveHint, t.name).toBe(false);
       }
+      expect(tools.filter((t) => t.annotations?.destructiveHint !== false).map((t) => t.name).sort()).toEqual(DESTRUCTIVE);
       await expect(call(await connect(W.key, "legacy"), "create_project", { domain: "nope.example", confirm: true })).rejects.toThrow(/not found/);
     });
 

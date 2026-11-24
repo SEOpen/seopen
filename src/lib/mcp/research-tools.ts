@@ -37,8 +37,8 @@ import { plainRefusal } from "./plan-wording";
  * gate is the argument and the scope, never the model's good behaviour.
  */
 
-/** Read-only for SEOpen's data, but it reaches out to a paid source. */
-const LOOKS_UP: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+/** Not read-only, so a client asks before running it: it changes none of the project's data, but with `max_credits` it spends. */
+const LOOKS_UP: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 
 const MAX_ROWS = 200;
 const DEFAULT_ROWS = 50;
