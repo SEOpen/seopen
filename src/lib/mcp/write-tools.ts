@@ -41,7 +41,7 @@ import { consumeLimit } from "./limits";
  * limit (`limits.ts`).
  */
 
-/** Adds or starts something: not read-only, never destructive, not idempotent. */
+/** Adds or starts something: not read-only, not idempotent, and destructive only where a tool below overwrites something or sends it out. */
 const ADDS: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
 /** Starts paid work at DataForSEO. */
 const RUNS: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
@@ -668,7 +668,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
         status: z.enum(ACTION_STATUSES),
         confirm,
       }),
-      annotations: { ...ADDS, idempotentHint: true },
+      annotations: { ...ADDS, destructiveHint: true, idempotentHint: true },
     },
     (args) =>
       run("update_ai_action_status", async () => {
@@ -688,7 +688,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
       description:
         "Turns one of the project's alert rules (from list_alerts) on or off, as the Alerts page in SEOpen does. Turning a rule off stops new alerts of that kind and keeps the history. Without confirm: true it changes nothing and says what it would do. Which rules are on is the user's choice.",
       inputSchema: z.object({ project, rule: z.enum(ALERT_RULES), enabled: z.boolean(), confirm }),
-      annotations: { ...ADDS, idempotentHint: true },
+      annotations: { ...ADDS, destructiveHint: true, idempotentHint: true },
     },
     (args) =>
       run("update_alert_rule", async () => {
@@ -709,7 +709,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
         urls: z.array(z.url()).min(1).max(MAX_SUBMIT_URLS).optional().describe("Full URLs to send. Left out: the sitemap's new and changed pages."),
         confirm,
       }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     },
     (args) =>
       run("submit_indexnow", async () => {

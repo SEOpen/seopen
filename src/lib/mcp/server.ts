@@ -38,10 +38,10 @@ export const WRITE_INSTRUCTIONS = `This key can also set projects up and start c
 When you change a site's code for a fix from list_fixes, record it: commit, call mark_fix_applied with the commit, and call verify_fix once it's deployed. For a change with no fix id, such as a title rewritten for a page from get_search_console, call record_change with the pages, the commit and the text the page should now contain. Only record changes you actually made.`;
 
 const READ_ONLY: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-/** Asks Google about a page; changes nothing but the inspection history. */
-const INSPECTS: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+/** Asks Google about a page and saves the answer to the inspection history, so it isn't read-only. */
+const INSPECTS: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 /** Reads stored data, and with some arguments asks Google too (get_search_console with `country`); changes nothing. */
-const READS_GOOGLE: ToolAnnotations = INSPECTS;
+const READS_GOOGLE: ToolAnnotations = { ...READ_ONLY, openWorldHint: true };
 
 const project = z.union([z.string(), z.number().int()]).optional().describe("Project id or domain, from list_projects. Optional when the workspace has one project.");
 const limit = z.number().int().min(1).max(MAX_LIMIT).optional().describe(`Rows to return (default 25, at most ${MAX_LIMIT}).`);
