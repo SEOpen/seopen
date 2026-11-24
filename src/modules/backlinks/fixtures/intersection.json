@@ -1,0 +1,74 @@
+[
+ {
+  "domain_intersection": {
+   "1": {
+    "target": "garden-forum.example",
+    "rank": 52,
+    "backlinks": 36,
+    "backlinks_spam_score": 26,
+    "first_seen": "2025-05-09 13:01:00 +00:00"
+   },
+   "2": {
+    "target": "garden-forum.example",
+    "rank": 0,
+    "backlinks": 2,
+    "backlinks_spam_score": 55,
+    "first_seen": "2026-05-27 05:01:16 +00:00"
+   }
+  }
+ },
+ {
+  "domain_intersection": {
+   "1": {
+    "target": "plant-news.example",
+    "rank": 51,
+    "backlinks": 4,
+    "backlinks_spam_score": 20,
+    "first_seen": "2026-06-04 15:31:47 +00:00"
+   },
+   "2": {
+    "target": "plant-news.example",
+    "rank": 103,
+    "backlinks": 17,
+    "backlinks_spam_score": 19,
+    "first_seen": "2023-10-13 19:45:34 +00:00"
+   }
+  }
+ },
+ {
+  "domain_intersection": {
+   "1": {
+    "target": "seed-swap.example",
+    "rank": 51,
+    "backlinks": 1,
+    "backlinks_spam_score": 0,
+    "first_seen": "2019-05-25 05:41:33 +00:00"
+   },
+   "2": {
+    "target": "seed-swap.example",
+    "rank": 0,
+    "backlinks": 2,
+    "backlinks_spam_score": 0,
+    "first_seen": "2022-03-14 12:09:08 +00:00"
+   }
+  }
+ },
+ {
+  "domain_intersection": {
+   "1": {
+    "target": "allotment-guide.example",
+    "rank": 50,
+    "backlinks": 70,
+    "backlinks_spam_score": 14,
+    "first_seen": "2025-07-05 22:24:01 +00:00"
+   },
+   "2": {
+    "target": "allotment-guide.example",
+    "rank": 22,
+    "backlinks": 33,
+    "backlinks_spam_score": 11,
+    "first_seen": "2024-09-26 21:08:52 +00:00"
+   }
+  }
+ }
+]

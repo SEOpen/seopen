@@ -1,0 +1,24 @@
+{
+  "keyword": "mac daily journal",
+  "datetime": "2026-10-29 06:12:03 +00:00",
+  "se_results_count": 48200,
+  "item_types": ["featured_snippet", "ai_overview", "organic", "people_also_ask"],
+  "items": [
+    { "type": "featured_snippet", "rank_group": 1, "rank_absolute": 1, "domain": "www.alphanote.example", "url": "https://www.alphanote.example/journals", "title": "Daily journals for Mac" },
+    {
+      "type": "ai_overview", "rank_group": 1, "rank_absolute": 2, "asynchronous_ai_overview": true,
+      "items": [{ "type": "ai_overview_element", "references": [{ "domain": "support.apple.com", "url": "https://support.apple.com/x" }] }],
+      "references": [
+        { "domain": "github.com", "url": "https://github.com/example/plainpad" },
+        { "domain": "alphanote.example", "url": "https://alphanote.example/journals" }
+      ]
+    },
+    { "type": "organic", "rank_group": 1, "rank_absolute": 3, "domain": "plainpadnotes.github.io", "url": "https://plainpadnotes.github.io/", "title": "Plainpad" },
+    { "type": "organic", "rank_group": 2, "rank_absolute": 4, "domain": "www.alphanote.example", "url": "https://www.alphanote.example/journals", "title": "Alphanote journals" },
+    { "type": "people_also_ask", "rank_group": 1, "rank_absolute": 5, "items": [{ "type": "people_also_ask_element", "url": "https://www.reddit.com/r/mac" }] },
+    { "type": "organic", "rank_group": 3, "rank_absolute": 6, "domain": "www.reddit.com", "url": "https://www.reddit.com/r/MacOS/1", "title": "Reddit" },
+    { "type": "organic", "rank_group": 4, "rank_absolute": 7, "domain": "blog.alphanote.example", "url": "https://blog.alphanote.example/best-journals", "title": "Blog" },
+    { "type": "organic", "rank_group": 5, "rank_absolute": 8, "domain": "www.reddit.com", "url": "https://www.reddit.com/r/MacOS/2", "title": "Reddit 2" },
+    { "type": "organic", "rank_group": 6, "rank_absolute": 9, "domain": "notalphanote.example", "url": "https://notalphanote.example/", "title": "Lookalike" }
+  ]
+}

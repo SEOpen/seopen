@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ADD COLUMN "ai_include_branded" boolean DEFAULT false NOT NULL;

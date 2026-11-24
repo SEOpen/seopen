@@ -1,0 +1,89 @@
+# Self-hosting: the web app, the job worker and Postgres 17 on one machine.
+#
+#   cp .env.example .env        # set SEOPEN_SECRET_KEY, POSTGRES_PASSWORD and your DataForSEO login
+#   docker compose up -d --build
+#
+# Then open http://127.0.0.1:4100 (http://localhost:4100 sends you there). With SEOPEN_NO_LOGIN=1,
+# as .env.example sets it, it opens with no password on this machine. On a server, remove it and
+# give the owner a password (docs/self-hosting.md, "Signing in"). The migrate service applies database migrations first and exits; the
+# web app and the worker start once it has (`docker compose logs migrate`). Run one worker per
+# database only: two would run, and pay for, every scheduled job twice.
+#
+# Without RESEND_API_KEY nothing can email a reset link, so set a forgotten password from here:
+#   docker compose exec web pnpm user:password you@example.com
+
+x-app: &app
+  build:
+    context: .
+    args:
+      NEXT_PUBLIC_SEOPEN_CONTACT_EMAIL: ${NEXT_PUBLIC_SEOPEN_CONTACT_EMAIL:-}
+      NEXT_PUBLIC_POSTHOG_KEY: ${NEXT_PUBLIC_POSTHOG_KEY:-}
+      NEXT_PUBLIC_POSTHOG_HOST: ${NEXT_PUBLIC_POSTHOG_HOST:-}
+      SEOPEN_SIGNUP_OPEN: ${SEOPEN_SIGNUP_OPEN:-}
+  image: seopen:local
+  env_file:
+    - path: .env
+      required: false
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: seopen
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: seopen
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seopen -d seopen"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Applies new migrations, then exits. It runs again on every `docker compose up`, and does nothing
+  # when the database is current.
+  migrate:
+    <<: *app
+    command: ["pnpm", "db:migrate:start"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://seopen:${POSTGRES_PASSWORD}@postgres:5432/seopen
+      DATABASE_CA_CERT: ""
+
+  worker:
+    <<: *app
+    command: ["pnpm", "worker:start"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://seopen:${POSTGRES_PASSWORD}@postgres:5432/seopen
+      DATABASE_CA_CERT: ""
+
+  web:
+    <<: *app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # Loopback only. To serve it to others, put a reverse proxy (Caddy, nginx) on this machine in front
+    # of 127.0.0.1:4100 for HTTPS, and set SEOPEN_TRUST_PROXY=1 in .env so visitor addresses come from it.
+    ports:
+      - "127.0.0.1:4100:4100"
+    environment:
+      DATABASE_URL: postgres://seopen:${POSTGRES_PASSWORD}@postgres:5432/seopen
+      DATABASE_CA_CERT: ""
+      # Sign-in accepts requests only from this address. Behind a domain, set it in .env to the
+      # https URL people open, and GOOGLE_REDIRECT_URI to match.
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://127.0.0.1:4100}
+
+volumes:
+  pgdata:

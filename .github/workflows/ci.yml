@@ -1,0 +1,89 @@
+name: CI
+
+# Lint, typecheck, tests and a production build on every push to main and on pull requests. No secrets needed.
+# The database tests run against a throwaway Postgres named seopen_test, the URL vitest.config.ts
+# sets; without that Postgres they would skip quietly instead of failing.
+#
+# A push that changes only Markdown docs doesn't run. The docs listed back in below still do,
+# because tests read them. Later patterns win, so they come last.
+# No CI run means no deploy either, which is right for a docs-only push.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!*.md"
+      - "README.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "CONTRIBUTING.md"
+      - "CLA.md"
+      - "SECURITY.md"
+      - "TRADEMARKS.md"
+      - "docs/conventions.md"
+      - "docs/dataforseo.md"
+      - "docs/google.md"
+      - "docs/posthog.md"
+      - "docs/plausible.md"
+      - "docs/umami.md"
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch cancels the run still going, so a burst of pushes costs one run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # The repository variable CI_RUNNER=codebuild runs this on the hosted service's own runner.
+    # Unset, as in this public repo, it runs on GitHub's.
+    runs-on: ${{ vars.CI_RUNNER == 'codebuild' && format('codebuild-seopen-ci-runner-{0}-{1}', github.run_id, github.run_attempt) || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    env:
+      # The test URL has no user, so postgres.js falls back to PGUSER.
+      PGUSER: postgres
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # A throwaway Postgres for the database tests, started by hand rather than as a `services:`
+      # container, which that runner doesn't support. Same image and settings on both runners.
+      - name: Start Postgres
+        run: |
+          # Amazon's public mirror of the same official image first, then Docker Hub, whose anonymous
+          # pull limit is per address and can be used up on a runner that shares its address.
+          image=""
+          for ref in public.ecr.aws/docker/library/postgres:17 postgres:17; do
+            if docker pull --quiet "$ref"; then image="$ref"; break; fi
+            echo "::warning::Could not pull $ref"
+          done
+          if [ -z "$image" ]; then echo "::error::No registry served postgres:17"; exit 1; fi
+          docker run -d --name ci-postgres -p 5432:5432 \
+            -e POSTGRES_USER=postgres -e POSTGRES_DB=seopen_test -e POSTGRES_HOST_AUTH_METHOD=trust \
+            "$image"
+          # Over TCP: during first boot the image runs a socket-only server, then restarts.
+          for i in $(seq 1 60); do
+            if docker exec ci-postgres pg_isready -h 127.0.0.1 -U postgres -d seopen_test >/dev/null 2>&1; then exit 0; fi
+            sleep 1
+          done
+          docker logs ci-postgres
+          exit 1
+
+      # No version: it reads packageManager (pnpm@9.15.9) from package.json.
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24 # matches the production image
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      # Builds without .env.local or any secret (checked 2026-11-10), so a page that breaks only at build fails here.
+      - run: pnpm build

@@ -1,0 +1,70 @@
+[
+ {
+  "domain": "fernhill-neighbors.biz",
+  "rank": 29,
+  "backlinks": 5,
+  "first_seen": "2021-10-06 17:15:10 +00:00",
+  "lost_date": null,
+  "backlinks_spam_score": 46,
+  "referring_pages": 4,
+  "referring_domains_nofollow": 0,
+  "referring_links_tld": {
+   "biz": 4
+  },
+  "referring_links_countries": {
+   "WW": 4
+  },
+  "referring_links_attributes": null
+ },
+ {
+  "domain": "linkfarm-alpha.shop",
+  "rank": 0,
+  "backlinks": 1,
+  "first_seen": "2026-10-29 03:12:04 +00:00",
+  "lost_date": null,
+  "backlinks_spam_score": 55,
+  "referring_pages": 1,
+  "referring_domains_nofollow": 0,
+  "referring_links_tld": {
+   "shop": 1
+  },
+  "referring_links_countries": {
+   "": 1
+  },
+  "referring_links_attributes": null
+ },
+ {
+  "domain": "linkfarm-beta.shop",
+  "rank": 0,
+  "backlinks": 1,
+  "first_seen": "2026-10-29 02:40:47 +00:00",
+  "lost_date": null,
+  "backlinks_spam_score": 45,
+  "referring_pages": 1,
+  "referring_domains_nofollow": 0,
+  "referring_links_tld": {
+   "shop": 1
+  },
+  "referring_links_countries": {
+   "": 1
+  },
+  "referring_links_attributes": null
+ },
+ {
+  "domain": "linkfarm-gamma.shop",
+  "rank": 0,
+  "backlinks": 1,
+  "first_seen": "2026-10-29 00:16:44 +00:00",
+  "lost_date": null,
+  "backlinks_spam_score": 55,
+  "referring_pages": 1,
+  "referring_domains_nofollow": 0,
+  "referring_links_tld": {
+   "shop": 1
+  },
+  "referring_links_countries": {
+   "": 1
+  },
+  "referring_links_attributes": null
+ }
+]

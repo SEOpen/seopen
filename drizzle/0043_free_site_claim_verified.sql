@@ -1,0 +1,1 @@
+ALTER TABLE "free_site_claims" ADD COLUMN "verified" boolean DEFAULT false NOT NULL;

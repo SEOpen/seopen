@@ -1,0 +1,532 @@
+@import "tailwindcss";
+
+/* `dark:` follows the resolved theme: the visitor's choice, or their system setting when the choice is System. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * The sidebar as a 56px rail: when chosen, and by default from md to lg. Below md it is a drawer,
+ * which never collapses. src/lib/sidebar.ts sets data-sidebar before first paint.
+ */
+@custom-variant rail {
+  @media (min-width: 48rem) {
+    html[data-sidebar="rail"] & {
+      @slot;
+    }
+  }
+  @media (min-width: 48rem) and (max-width: 63.98rem) {
+    html:not([data-sidebar="full"]) & {
+      @slot;
+    }
+  }
+}
+
+/*
+ * SEOpen design tokens, from the Harbor kit (brand/harbor/), with a less tan light ramp than the kit: ink on paper in light, slate in dark, blue for
+ * "act here", green only for a number that moved the right way, and everything else neutral. Use these via
+ * Tailwind (bg-surface, text-muted, border-line, text-accent...) rather than raw colours. Both the site and
+ * the app follow the system unless the visitor picks: THEME_SCRIPT (src/lib/theme.ts) sets data-theme
+ * before first paint, and the media query below covers a page with no script.
+ *
+ * --accent is the readable blue: links, focus, tabs, selected text. --accent-fill is the button fill, with
+ * --accent-fg on it: white on #2f5fc4 in light, slate on #7ea6f2 in dark. --series is the current data line.
+ * Direction is --good or --bad, never the accent, so a rising number never looks like a button.
+ */
+:root {
+  color-scheme: light;
+  --bg: #f2f1ed;
+  --surface: #ffffff;
+  /* The main column of the app and its sidebar, one step above the page. */
+  --window: #ffffff;
+  --window-edge: rgba(22, 23, 27, 0.08);
+  /* Filled panels inside the window: a step, so they don't need a hairline box. */
+  --tile: #e6e5e1;
+  --surface-2: #d9d7d2;
+  /* Hairlines between regions, translucent so they read on every surface. A panel's edge is --panel-edge: light needs one, dark doesn't. */
+  --line: rgba(22, 23, 27, 0.08);
+  --line-soft: rgba(22, 23, 27, 0.06);
+  --panel-edge: rgba(22, 23, 27, 0.08);
+  /* The kit's chart-muted, also on field edges and the previous-period line. Measures 2.61:1 on white and 2.07:1 on a tile, under the 3:1 for marks, a known miss. */
+  --line-strong: #a3a098;
+  /* Secondary buttons. They have a label, so their edge can stay quieter than a field's. */
+  --control-edge: rgba(22, 23, 27, 0.17);
+  --tick: #c5c3bf;
+  --tick-major: #a3a098;
+  --fg: #16171b;
+  --secondary: #45464b;
+  /* The kit's --seo-text-3. Measures 4.04:1 on Raised, under AA, a known miss. */
+  --muted: #64656a;
+  --disabled: #a3a098;
+  /* The kit's blue. Clears 4.5:1 on paper, white and a tile; measures 4.11:1 on Raised (the selected sidebar row), a known miss. */
+  --accent: #2f5fc4;
+  --accent-fill: #2f5fc4;
+  --accent-hover: #2850a6;
+  --accent-press: #22468f;
+  --accent-fg: #ffffff;
+  /* The mockups select on Raised: the sidebar's active row. */
+  --accent-subtle: #d9d7d2;
+  /* Blue as a mark: the home headline's accent word, the logo's top layer and the chart line. */
+  --accent-mark: #2f5fc4;
+  --series: #2f5fc4;
+  --zone: #f2f1ed;
+  --zone-line: #a3a098;
+  /* Green is for a number that moved the right way, and nothing else. The kit's #0b7038 measures 4.31:1 on Raised, under AA, a known miss. */
+  --good: #0b7038;
+  --good-fill: #1e9e5a;
+  /* Warn sits at yellow and bad at raspberry, far from blue on the wheel. Both travel with a dot, an icon or a word. */
+  --warn: #423400;
+  --warn-mark: #655200;
+  --bad: #b80a2a;
+  /* Several series on one chart only, at most four, keyed to the entity. One series is always --series. Context lines are --line-strong. */
+  --chart-1: #2f5fc4;
+  --chart-2: #16171b;
+  --chart-3: #337980;
+  --chart-4: #661177;
+  /* Ordered buckets, strongest first: the local grid. Neutral, because a rank isn't a change or an action. */
+  --ordinal-1: #16171b;
+  --ordinal-2: #8a8880;
+  /* A Local map dot's rank, green to raspberry, with ink or white numbers. One scale in both themes, for that map only. */
+  --rank-1: #1e9e5a;
+  --rank-2: #f7e68f;
+  --rank-3: #d9a21b;
+  --rank-4: #8a1048;
+  --rank-light: #ffffff;
+  --rank-ink: #16171b;
+  --scrim: rgba(21, 22, 26, 0.4);
+  --window-shadow: 0 24px 60px -24px rgba(21, 22, 26, 0.22);
+  /* The marketing site's full-width change of ground and its dot field. */
+  --band: #e7e6e2;
+  --band-dot: #cfcdc8;
+  /* The app's main column (window-column): paper in light, with white panels on a hairline and paper tiles inside a panel. */
+  --column: #f2f1ed;
+  --column-panel: #ffffff;
+  --column-panel-edge: rgba(22, 23, 27, 0.08);
+  --column-inset: #f2f1ed;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #14171c;
+  --surface: #1c2027;
+  --window: #1c2027;
+  --window-edge: rgba(238, 240, 243, 0.16);
+  --tile: #262b34;
+  --surface-2: #323844;
+  --line: rgba(238, 240, 243, 0.09);
+  --line-soft: rgba(238, 240, 243, 0.06);
+  --panel-edge: transparent;
+  --line-strong: #5d636e;
+  --control-edge: rgba(238, 240, 243, 0.16);
+  --tick: #3a404c;
+  --tick-major: #5d636e;
+  --fg: #eef0f3;
+  --secondary: #b8bdc6;
+  /* The kit's --seo-text-3. Measures 4.26:1 on a tile and 3.53:1 on Raised, under AA, a known miss. */
+  --muted: #8f95a0;
+  --disabled: #555b66;
+  --accent: #7ea6f2;
+  --accent-fill: #7ea6f2;
+  --accent-hover: #97b8f5;
+  --accent-press: #6a93e4;
+  --accent-fg: #14171c;
+  --accent-subtle: #323844;
+  --accent-mark: #7ea6f2;
+  --series: #7ea6f2;
+  --zone: #20242b;
+  --zone-line: #5d636e;
+  --good: #4cc38a;
+  --good-fill: #3bb57a;
+  --warn: #f0d44a;
+  --warn-mark: #f0d44a;
+  --bad: #ff7b72;
+  --chart-1: #7ea6f2;
+  --chart-2: #eef0f3;
+  --chart-3: #6b9599;
+  --chart-4: #a633cc;
+  --ordinal-1: #eef0f3;
+  --ordinal-2: #a3a9b3;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --window-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  --band: #1c2027;
+  --band-dot: #323844;
+  --column: #1c2027;
+  --column-panel: #262b34;
+  --column-panel-edge: transparent;
+  --column-inset: #323844;
+}
+
+/* No script ran: follow the system. Same values as the dark block above. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --bg: #14171c;
+    --surface: #1c2027;
+    --window: #1c2027;
+    --window-edge: rgba(238, 240, 243, 0.16);
+    --tile: #262b34;
+    --surface-2: #323844;
+    --line: rgba(238, 240, 243, 0.09);
+    --line-soft: rgba(238, 240, 243, 0.06);
+    --panel-edge: transparent;
+    --line-strong: #5d636e;
+    --control-edge: rgba(238, 240, 243, 0.16);
+    --tick: #3a404c;
+    --tick-major: #5d636e;
+    --fg: #eef0f3;
+    --secondary: #b8bdc6;
+    --muted: #8f95a0;
+    --disabled: #555b66;
+    --accent: #7ea6f2;
+    --accent-fill: #7ea6f2;
+    --accent-hover: #97b8f5;
+    --accent-press: #6a93e4;
+    --accent-fg: #14171c;
+    --accent-subtle: #323844;
+    --accent-mark: #7ea6f2;
+    --series: #7ea6f2;
+    --zone: #20242b;
+    --zone-line: #5d636e;
+    --good: #4cc38a;
+    --good-fill: #3bb57a;
+    --warn: #f0d44a;
+    --warn-mark: #f0d44a;
+    --bad: #ff7b72;
+    --chart-1: #7ea6f2;
+    --chart-2: #eef0f3;
+    --chart-3: #6b9599;
+    --chart-4: #a633cc;
+    --ordinal-1: #eef0f3;
+    --ordinal-2: #a3a9b3;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --window-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+    --band: #1c2027;
+    --band-dot: #323844;
+    --column: #1c2027;
+    --column-panel: #262b34;
+    --column-panel-edge: transparent;
+    --column-inset: #323844;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-window: var(--window);
+  --color-window-edge: var(--window-edge);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-line-strong: var(--line-strong);
+  --color-panel-edge: var(--panel-edge);
+  --color-control-edge: var(--control-edge);
+  --color-tick: var(--tick);
+  --color-tick-major: var(--tick-major);
+  --color-fg: var(--fg);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-disabled: var(--disabled);
+  --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-press: var(--accent-press);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-mark: var(--accent-mark);
+  --color-tile: var(--tile);
+  --color-series: var(--series);
+  --color-zone: var(--zone);
+  --color-zone-line: var(--zone-line);
+  --color-good: var(--good);
+  --color-good-fill: var(--good-fill);
+  --color-warn: var(--warn);
+  --color-warn-mark: var(--warn-mark);
+  --color-bad: var(--bad);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-ordinal-1: var(--ordinal-1);
+  --color-ordinal-2: var(--ordinal-2);
+  --color-rank-1: var(--rank-1);
+  --color-rank-2: var(--rank-2);
+  --color-rank-3: var(--rank-3);
+  --color-rank-4: var(--rank-4);
+  --color-rank-light: var(--rank-light);
+  --color-rank-ink: var(--rank-ink);
+  /* Outfit for words, Geist Mono for numbers in rows, deltas, dates, URLs, shortcuts and code (src/app/fonts.ts).
+     The symbols come first because the Outfit stack ends in its Arial fallback, which would take them; their unicode-range keeps them to a few glyphs. */
+  --font-sans: var(--font-outfit-symbols), var(--font-geist-mono-symbols), var(--font-outfit), system-ui, sans-serif;
+  --font-display: var(--font-outfit-symbols), var(--font-geist-mono-symbols), var(--font-outfit), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono-symbols), var(--font-geist-mono), ui-monospace, monospace;
+  /* The kit's two corners: 8 for controls and chips, 12 for panels, windows and dialogs. */
+  --radius-sm: 8px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
+  --radius-2xl: 12px;
+  --ease-instrument: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/*
+ * Small type for the signed-in surfaces: label, data and caption all 13. Set on the roots of (app), (admin)
+ * and (auth), and on the site's app mockups, which have to match the app. The site doesn't set it,
+ * so its own sizes stay as they are.
+ */
+@utility app-type {
+  --type-label: 13px;
+  --type-data: 13px;
+  --text-xs: 13px;
+  --text-xs--line-height: 18px;
+}
+
+/* A big readout in Outfit, with its own digit widths: a figure stands alone, and Outfit's tabular 1 gapes. Never coloured. */
+@utility figure {
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+/* Small labels: quiet sentence case. */
+@utility caps-label {
+  font-weight: 500;
+  font-size: var(--type-label, 13px);
+  line-height: 1.4;
+}
+
+/* Numbers and timestamps in rows: Geist Mono, so columns line up. */
+@utility data {
+  font-family: var(--font-mono);
+  font-size: var(--type-data, 12px);
+}
+
+/* The numbers in a sentence or caption: the data size, staying in Outfit as the mockups do. */
+@utility digits {
+  font-size: var(--type-data, 12px);
+}
+
+/* Figures as a row of filled tiles. */
+@utility figure-strip {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(10.5rem, 45%), 1fr));
+  & > * {
+    padding: 14px 16px 16px;
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--panel-edge);
+  }
+  /* Two columns on a phone: an odd last tile takes the whole row rather than leaving a hole. */
+  @media (width < 40rem) {
+    & > :last-child:nth-child(odd) {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
+/*
+ * The app's main column, on the real pages and in their mockups. Light is paper with white panels on a
+ * hairline, so nothing is grey on grey; dark keeps its filled steps. Inside a panel, tiles take --column-inset.
+ */
+@utility window-column {
+  background: var(--column);
+  --bg: var(--column);
+  --surface: var(--column-panel);
+  --panel-edge: var(--column-panel-edge);
+  --panel-inset: var(--column-inset);
+}
+
+/*
+ * The slate chrome: the app's sidebar, its phone bar and its drawer, in both themes. It sets the dark ramp
+ * inside, so every token class reads on slate, and sits one step below the dark window. Popovers that open
+ * from it are slate too.
+ */
+@utility slate-chrome {
+  color-scheme: dark;
+  color: var(--fg);
+  --window: #14171c;
+  --bg: #14171c;
+  --surface: #1c2027;
+  --tile: #262b34;
+  --surface-2: #323844;
+  --line: rgba(238, 240, 243, 0.09);
+  --line-soft: rgba(238, 240, 243, 0.06);
+  --panel-edge: transparent;
+  --line-strong: #5d636e;
+  --control-edge: rgba(238, 240, 243, 0.16);
+  --tick: #3a404c;
+  --tick-major: #5d636e;
+  --fg: #eef0f3;
+  --secondary: #b8bdc6;
+  --muted: #8f95a0;
+  --disabled: #555b66;
+  --accent: #7ea6f2;
+  --accent-fill: #7ea6f2;
+  --accent-hover: #97b8f5;
+  --accent-press: #6a93e4;
+  --accent-fg: #14171c;
+  --accent-subtle: #323844;
+  --accent-mark: #7ea6f2;
+  --good: #4cc38a;
+  --warn: #f0d44a;
+  --warn-mark: #f0d44a;
+  --bad: #ff7b72;
+}
+
+/*
+ * Figures as one ruled row inside a panel: no tiles, a hairline between cells, and a hairline above. Columns
+ * follow the nearest container: six across a wide card, three, then two. Cells stay transparent, so the
+ * panel's hover reaches them, and the panel's clip hides the outer rules.
+ */
+@utility figure-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: clip;
+  border-top: 1px solid var(--line);
+  & > * {
+    padding: 12px 16px 14px;
+    box-shadow: -1px -1px 0 var(--line);
+  }
+  /* A missing number steps back, so the numbers that are there lead. A failure keeps its colour. */
+  & > [data-empty="quiet"] > p {
+    color: var(--muted);
+  }
+  @container (min-width: 34rem) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    & > * {
+      padding: 14px 20px 16px;
+    }
+  }
+  @container (min-width: 58rem) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+/* A table's column heads. */
+@utility table-head {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* A filled surface with soft corners, no shadow. Only light gets an edge, where white on the page needs one. */
+@utility panel {
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--panel-edge);
+}
+
+/* Registered so it inherits as a length: cqi resolves here, against the main column, not again further down. */
+@property --page-pad {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 1rem;
+}
+
+/* The page's side padding, measured from the main column (the `main` container) rather than the window. */
+@utility page-column {
+  /* Fluid so tables can use the screen; only a very wide window centres it. Reading text keeps its own measure. */
+  --page-pad: max(1rem, calc((100cqi - 1760px) / 2));
+  padding-inline: var(--page-pad);
+  @container main (min-width: 42rem) {
+    --page-pad: max(1.5rem, calc((100cqi - 1760px) / 2));
+  }
+}
+
+/* The page and its side rail, one width everywhere. The rail drops under the content when the column is narrow. */
+@utility module-rail {
+  display: grid;
+  gap: 1.5rem;
+  & > * {
+    min-width: 0;
+  }
+  @container main (min-width: 64rem) {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+}
+
+/*
+ * A full-width change of ground on the marketing site, with a faint dot field that fades out top and bottom.
+ * A window on it keeps its own edge and shadow. The dots sit behind everything and carry no meaning.
+ */
+@utility site-band {
+  position: relative;
+  isolation: isolate;
+  background: var(--band);
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image: radial-gradient(circle, var(--band-dot) 1px, transparent 1.5px);
+    background-size: 20px 20px;
+    /* Out at the top and bottom, and thin behind the column, so the words stand on clean ground. */
+    mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent), radial-gradient(ellipse 62% 75% at center, transparent 55%, black 100%);
+    mask-composite: intersect;
+    pointer-events: none;
+  }
+}
+
+/* Inside a panel the tiles take the next surface up: Raised, or paper in the app's light column. */
+.panel .figure-strip > * {
+  background: var(--panel-inset, var(--surface-2));
+}
+
+@layer base {
+  /* Screen-reader text is positioned, so in a scroller that isn't it escapes the clip and widens the page. */
+  .overflow-auto,
+  .overflow-x-auto {
+    position: relative;
+  }
+  .font-display {
+    font-weight: 700;
+    letter-spacing: -0.035em;
+  }
+  .font-mono,
+  code,
+  kbd,
+  pre {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background: var(--accent-subtle);
+    color: var(--fg);
+  }
+  /* Lucide at the kit's weight, wherever an icon is drawn. */
+  .lucide {
+    stroke-width: 1.5;
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--accent-fill);
+  }
+  html {
+    scrollbar-color: var(--tick) var(--bg);
+    caret-color: var(--accent);
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  /* A page that grows past the fold doesn't shift the column in the app. */
+  html:has(.app-type) {
+    scrollbar-gutter: stable;
+  }
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* Text links keep an underline, so they aren't told apart by colour alone. A table column of links stays quiet, in the text colour. */
+a.text-accent[class~="hover:underline"]:not(td a) {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+a.text-accent[class~="hover:underline"]:not(td a):hover {
+  text-decoration-color: currentColor;
+}

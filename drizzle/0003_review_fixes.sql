@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "rank_runs_one_active_per_project" ON "rank_runs" USING btree ("project_id") WHERE "rank_runs"."status" in ('posting', 'pending');--> statement-breakpoint
+CREATE UNIQUE INDEX "audit_crawls_one_active_per_project" ON "audit_crawls" USING btree ("project_id") WHERE status in ('queued', 'posting', 'crawling', 'importing');

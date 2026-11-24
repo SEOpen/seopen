@@ -1,0 +1,1 @@
+ALTER TABLE "rank_runs" ADD COLUMN "source" text DEFAULT 'app' NOT NULL;

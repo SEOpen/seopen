@@ -1,0 +1,116 @@
+{
+ "version": "0.1.20261022",
+ "status_code": 20000,
+ "status_message": "Ok.",
+ "time": "1.0000 sec.",
+ "cost": 0.002,
+ "tasks_count": 1,
+ "tasks_error": 0,
+ "tasks": [
+  {
+   "id": "00000000-0000-0000-0000-000000000000",
+   "status_code": 20000,
+   "status_message": "Ok.",
+   "time": "1.0000 sec.",
+   "cost": 0.002,
+   "result_count": 1,
+   "path": [
+    "v3",
+    "serp",
+    "google"
+   ],
+   "data": {
+    "api": "serp",
+    "function": "live",
+    "se": "google",
+    "se_type": "organic",
+    "keyword": "mac journal",
+    "location_code": 2840,
+    "language_code": "en",
+    "device": "desktop",
+    "depth": 10,
+    "os": "windows"
+   },
+   "result": [
+    {
+     "keyword": "mac journal",
+     "type": "organic",
+     "se_domain": "google.com",
+     "location_code": 2840,
+     "language_code": "en",
+     "check_url": "https://www.google.com/search?q=mac%20journal",
+     "datetime": "2026-10-29 04:55:26 +00:00",
+     "spell": null,
+     "refinement_chips": null,
+     "item_types": [
+      "ai_overview",
+      "organic"
+     ],
+     "se_results_count": 126,
+     "pages_count": 1,
+     "items_count": 3,
+     "items": [
+      {
+       "type": "ai_overview",
+       "rank_group": 1,
+       "rank_absolute": 1,
+       "page": 1,
+       "position": "left",
+       "asynchronous_ai_overview": false,
+       "markdown": "A made-up AI Overview for tests.",
+       "items": [
+        {
+         "type": "ai_overview_element",
+         "references": [
+          {
+           "type": "ai_overview_reference",
+           "domain": "support.apple.com",
+           "url": "https://support.apple.com/example",
+           "title": "Example"
+          }
+         ]
+        }
+       ],
+       "references": [
+        {
+         "type": "ai_overview_reference",
+         "domain": "www.youtube.com",
+         "url": "https://www.youtube.com/watch?v=example",
+         "title": "Example video"
+        },
+        {
+         "type": "ai_overview_reference",
+         "domain": "github.com",
+         "url": "https://github.com/example/journal",
+         "title": "Example repo"
+        }
+       ]
+      },
+      {
+       "type": "organic",
+       "rank_group": 1,
+       "rank_absolute": 2,
+       "page": 1,
+       "position": "left",
+       "domain": "www.reddit.com",
+       "url": "https://www.reddit.com/r/example/",
+       "title": "Example thread",
+       "description": "Made up."
+      },
+      {
+       "type": "organic",
+       "rank_group": 2,
+       "rank_absolute": 3,
+       "page": 1,
+       "position": "left",
+       "domain": "www.youtube.com",
+       "url": "https://www.youtube.com/watch?v=example",
+       "title": "Example video",
+       "description": "Made up."
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

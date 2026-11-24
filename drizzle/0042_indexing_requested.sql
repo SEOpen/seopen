@@ -1,0 +1,1 @@
+ALTER TABLE "indexing_pages" ADD COLUMN "requested_at" timestamp with time zone;

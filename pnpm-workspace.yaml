@@ -1,0 +1,7 @@
+# Extra packages a copy of SEOpen can add, each with its own package.json and pnpm-lock.yaml, so it
+# can depend on something without changing the root package.json or lockfile (.npmrc keeps each
+# lockfile separate). This repo has none, and a glob that matches nothing is fine. The hosted
+# service keeps its payment provider's SDK in one. Code inside a package's folder imports its
+# dependencies; the app imports that code by path (`@/packages/<name>`).
+packages:
+  - "src/packages/*"

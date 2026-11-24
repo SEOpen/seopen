@@ -1,0 +1,93 @@
+[
+ {
+  "date": "2025-10-31 00:00:00 +00:00",
+  "new_backlinks": 4,
+  "lost_backlinks": 7,
+  "new_referring_domains": 2,
+  "lost_referring_domains": 1
+ },
+ {
+  "date": "2025-11-30 00:00:00 +00:00",
+  "new_backlinks": 12,
+  "lost_backlinks": 3,
+  "new_referring_domains": 1,
+  "lost_referring_domains": 0
+ },
+ {
+  "date": "2025-12-31 00:00:00 +00:00",
+  "new_backlinks": 5,
+  "lost_backlinks": 5,
+  "new_referring_domains": 2,
+  "lost_referring_domains": 1
+ },
+ {
+  "date": "2026-01-31 00:00:00 +00:00",
+  "new_backlinks": 9,
+  "lost_backlinks": 6,
+  "new_referring_domains": 3,
+  "lost_referring_domains": 0
+ },
+ {
+  "date": "2026-02-28 00:00:00 +00:00",
+  "new_backlinks": 11,
+  "lost_backlinks": 2,
+  "new_referring_domains": 4,
+  "lost_referring_domains": 1
+ },
+ {
+  "date": "2026-03-31 00:00:00 +00:00",
+  "new_backlinks": 3,
+  "lost_backlinks": 1,
+  "new_referring_domains": 1,
+  "lost_referring_domains": 0
+ },
+ {
+  "date": "2026-04-30 00:00:00 +00:00",
+  "new_backlinks": 2,
+  "lost_backlinks": 0,
+  "new_referring_domains": 1,
+  "lost_referring_domains": 0
+ },
+ {
+  "date": "2026-05-31 00:00:00 +00:00",
+  "new_backlinks": 6,
+  "lost_backlinks": 8,
+  "new_referring_domains": 2,
+  "lost_referring_domains": 2
+ },
+ {
+  "date": "2026-06-30 00:00:00 +00:00",
+  "new_backlinks": 5,
+  "lost_backlinks": 9,
+  "new_referring_domains": 2,
+  "lost_referring_domains": 3
+ },
+ {
+  "date": "2026-07-31 00:00:00 +00:00",
+  "new_backlinks": 7,
+  "lost_backlinks": 20,
+  "new_referring_domains": 3,
+  "lost_referring_domains": 2
+ },
+ {
+  "date": "2026-08-31 00:00:00 +00:00",
+  "new_backlinks": 10,
+  "lost_backlinks": 12,
+  "new_referring_domains": 5,
+  "lost_referring_domains": 1
+ },
+ {
+  "date": "2026-09-30 00:00:00 +00:00",
+  "new_backlinks": 8,
+  "lost_backlinks": 11,
+  "new_referring_domains": 6,
+  "lost_referring_domains": 2
+ },
+ {
+  "date": "2026-10-31 00:00:00 +00:00",
+  "new_backlinks": 150,
+  "lost_backlinks": 0,
+  "new_referring_domains": 140,
+  "lost_referring_domains": 0
+ }
+]
