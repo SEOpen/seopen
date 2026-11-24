@@ -56,7 +56,7 @@ const maxCredits = z
   .int()
   .min(0)
   .optional()
-  .describe(`The most ${rules.creditUnit} this call may spend. Left out or below the quoted price, nothing runs and the price comes back. Ask the user before raising it.`);
+  .describe(`The most ${rules.creditUnit} this call may spend. Left out or below the quoted price, nothing runs and the price comes back. Setting it is the user's approval of that price.`);
 
 type Run = (tool: string, body: () => Promise<object>) => Promise<CallToolResult>;
 
@@ -240,7 +240,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     "add_ai_prompts",
     {
       title: "Add AI prompts",
-      description: `Adds prompts to AI visibility: questions a customer might ask an AI assistant, asked every Monday on each platform (${PLATFORM_KEYS.join(", ")}; default all). ${rules.hasPlans ? "Each prompt counts against the plan's prompt limit. " : ""}A prompt's \`keyword\` is checked for a Google AI Overview; left out it comes from the prompt, and an empty string skips that check. Leave the brand name out of prompts: branded prompts don't count toward visibility unless the project counts them.`,
+      description: `Adds prompts to AI visibility: questions a customer might ask an AI assistant, asked every Monday on each platform (${PLATFORM_KEYS.join(", ")}; default all). ${rules.hasPlans ? "Each prompt counts against the plan's prompt limit. " : ""}A prompt's \`keyword\` is checked for a Google AI Overview; left out it comes from the prompt, and an empty string skips that check. Prompts that name the brand are branded, and don't count toward visibility unless the project counts them.`,
       inputSchema: z.object({
         project,
         prompts: z
@@ -335,7 +335,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     "add_local_business",
     {
       title: "Track a Google Maps listing",
-      description: `Step 2 of Local SEO: tracks a listing from find_local_listing (same name and city, plus its \`listing\` key) on a grid of points around it. Grid ${GRID_SIZES.join(", ")} points across (default 5), radius ${RADII_MILES.join(", ")} miles (default 5). Weekly checks are on by default and ${SPEND} each week. Add keywords next.`,
+      description: `Step 2 of Local SEO: tracks a listing from find_local_listing (same name and city, plus its \`listing\` key) on a grid of points around it. Grid ${GRID_SIZES.join(", ")} points across (default 5), radius ${RADII_MILES.join(", ")} miles (default 5). Weekly checks are on by default and ${SPEND} each week. It checks nothing until it has keywords.`,
       inputSchema: z.object({
         project,
         name: z.string().min(1).max(120),
@@ -395,7 +395,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     {
       title: "Check rankings now",
       description:
-        `Checks every tracked keyword's Google position now instead of waiting for the daily run. \`deep\` checks deeper and looks for AI Overviews, as the weekly sweep does. One check at a time per project; results arrive over the next few minutes (read them with get_rankings). A check ${COVERED} (\`credits: 0\`), like a site audit. A keyword that comes back missing or far below its recent best is looked up to twice more, so \`max_cost_usd\`, sent only to the owner's workspace, is the most it can cost SEOpen; most checks cost less.`,
+        `Checks every tracked keyword's Google position now instead of waiting for the daily run. \`deep\` checks deeper and looks for AI Overviews, as the weekly sweep does. One check at a time per project; results arrive over the next few minutes (in get_rankings). A check ${COVERED} (\`credits: 0\`), like a site audit. A keyword that comes back missing or far below its recent best is looked up to twice more, so \`max_cost_usd\`, sent only to the owner's workspace, is the most it can cost SEOpen; most checks cost less.`,
       inputSchema: z.object({ project, deep: z.boolean().optional(), confirm }),
       annotations: RUNS,
     },
@@ -422,7 +422,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     {
       title: "Run AI visibility now",
       description:
-        `Asks every active prompt on its platforms now instead of waiting for Monday's run${rules.hasPlans ? ", which the plan covers" : ""}. ${COSTS} (quoted first). One run by hand a week per project; answers arrive over the next few minutes (read them with get_ai_visibility).`,
+        `Asks every active prompt on its platforms now instead of waiting for Monday's run${rules.hasPlans ? ", which the plan covers" : ""}. ${COSTS} (quoted first). One run by hand a week per project; answers arrive over the next few minutes (in get_ai_visibility).`,
       inputSchema: z.object({ project, max_credits: maxCredits }),
       annotations: RUNS,
     },
@@ -444,7 +444,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     "start_site_audit",
     {
       title: "Start a site audit",
-      description: `Crawls the project's site for technical SEO issues. Pages and JavaScript default to the project's last audit settings (500 pages without JavaScript at first); ${rules.hasPlans ? `the plan caps pages per audit (at most ${MAX_PAGES_LIMIT})` : `at most ${MAX_PAGES_LIMIT} pages per audit`}. An audit ${COVERED} (\`credits: 0\`), unlike the research tools${rules.hasPlans ? "; the plan caps how often audits run on Free and the trial" : ""}. One crawl at a time per project; read the results with get_audit_issues once it finishes.`,
+      description: `Crawls the project's site for technical SEO issues. Pages and JavaScript default to the project's last audit settings (500 pages without JavaScript at first); ${rules.hasPlans ? `the plan caps pages per audit (at most ${MAX_PAGES_LIMIT})` : `at most ${MAX_PAGES_LIMIT} pages per audit`}. An audit ${COVERED} (\`credits: 0\`), unlike the research tools${rules.hasPlans ? "; the plan caps how often audits run on Free and the trial" : ""}. One crawl at a time per project; the results are in get_audit_issues once it finishes.`,
       inputSchema: z.object({
         project,
         max_pages: z.number().int().min(1).max(MAX_PAGES_LIMIT).optional(),
@@ -476,7 +476,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     {
       title: "Check a Google Maps listing now",
       description:
-        `Searches every keyword of a tracked listing at every grid point now instead of waiting for its weekly check. ${COSTS} (quoted first). One check at a time per listing; read the results with get_local_seo.`,
+        `Searches every keyword of a tracked listing at every grid point now instead of waiting for its weekly check. ${COSTS} (quoted first). One check at a time per listing; the results are in get_local_seo.`,
       inputSchema: z.object({ project, business: z.number().int().describe("The listing's id, from get_local_seo."), max_credits: maxCredits }),
       annotations: RUNS,
     },
@@ -498,7 +498,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     "save_keywords",
     {
       title: "Save keywords to a list",
-      description: `Saves keywords to one of the project's keyword lists, creating the list when no list has that name. Pass the metrics you already looked up (volume, kd, cpc, intent); nothing is looked up or spent, and lists have no ${rules.hasPlans ? "plan " : ""}limit. Keywords already in the list are skipped, and the same keyword in other case or spacing is saved once and listed in \`duplicates\`. At most ${MAX_KEYWORDS_PER_SAVE} per call. Read lists back with get_keyword_lists.`,
+      description: `Saves keywords to one of the project's keyword lists, creating the list when no list has that name. Takes metrics already looked up (volume, kd, cpc, intent); nothing is looked up or spent, and lists have no ${rules.hasPlans ? "plan " : ""}limit. Keywords already in the list are skipped, and the same keyword in other case or spacing is saved once and listed in \`duplicates\`. At most ${MAX_KEYWORDS_PER_SAVE} per call. The lists are in get_keyword_lists.`,
       inputSchema: z.object({
         project,
         list: z.string().min(1).max(MAX_LIST_NAME).describe("The list's name. A new name makes a new list."),
@@ -547,7 +547,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     "save_teardown",
     {
       title: "Save a teardown",
-      description: `Saves a competitor teardown to the project, shown on Domains → Teardowns in SEOpen: a summary, what the site does to win its traffic (findings), and 1 to ${TL.moves} moves for the user's own site. Plain text: blank lines split paragraphs, and Markdown and HTML show as typed, so leave them out. Nothing is looked up or spent. Without confirm: true it changes nothing and says what it would do.`,
+      description: `Saves a competitor teardown to the project, shown on Domains → Teardowns in SEOpen: a summary, what the site does to win its traffic (findings), and 1 to ${TL.moves} moves for the user's own site. Plain text: blank lines split paragraphs, and Markdown and HTML show as typed. Nothing is looked up or spent. Without confirm: true it changes nothing and says what it would do.`,
       inputSchema: z.object({
         project,
         domain: z.string().min(3).max(253).describe("The site taken apart, such as example.com."),
@@ -597,7 +597,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     "create_content_brief",
     {
       title: "Create a content brief",
-      description: `Saves a content brief for one keyword, shown on Keyword research → Briefs: the keyword's metrics, what kind of page ranks in the top 10 (and a warning when fewer than 6 of 10 agree), the AI Overview and the pages it cites, questions people ask, the headings the top 3 share, a headings-only outline, owner-only inputs to fill, and internal links from the project's audit and Search Console data. Never the article. page_type: guide, vs (X vs Y, Y defaults to the first tracked competitor), alternatives (${OPTION_RANGE.min} to ${OPTION_RANGE.max} options, never the site itself first, one drawback each), best (best X for Y) or pricing; every price needs the date it was checked. Saved lookups are free; the rest ${rules.hasPlans ? `costs ${rules.researchNoun}, quoted first` : "spends on DataForSEO and is quoted first"}. Left out or with max_credits below the price, nothing is saved or spent. Read it back with get_content_brief.`,
+      description: `Saves a content brief for one keyword, shown on Keyword research → Briefs: the keyword's metrics, what kind of page ranks in the top 10 (and a warning when fewer than 6 of 10 agree), the AI Overview and the pages it cites, questions people ask, the headings the top 3 share, a headings-only outline, owner-only inputs to fill, and internal links from the project's audit and Search Console data. Never the article. page_type: guide, vs (X vs Y, Y defaults to the first tracked competitor), alternatives (${OPTION_RANGE.min} to ${OPTION_RANGE.max} options, never the site itself first, one drawback each), best (best X for Y) or pricing; every price needs the date it was checked. Saved lookups are free; the rest ${rules.hasPlans ? `costs ${rules.researchNoun}, quoted first` : "spends on DataForSEO and is quoted first"}. Left out or with max_credits below the price, nothing is saved or spent. The saved brief is in get_content_brief.`,
       inputSchema: z.object({
         project,
         keyword: z.string().min(1).max(700).describe("The main keyword, as people search it."),
@@ -652,7 +652,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     "update_ai_action_status",
     {
       title: "Update AI visibility actions",
-      description: `Marks actions from get_ai_actions open, done or dismissed, as the Actions tab in SEOpen does. Only actions get_ai_actions lists now can change. It records a decision: nothing is posted or sent anywhere. Up to ${MAX_ACTION_CHANGES} at once. Without confirm: true it changes nothing and says what it would do. Mark an action done only when the user says the work is done.`,
+      description: `Marks actions from get_ai_actions open, done or dismissed, as the Actions tab in SEOpen does. Only actions get_ai_actions lists now can change. It records a decision: nothing is posted or sent anywhere. Up to ${MAX_ACTION_CHANGES} at once. Without confirm: true it changes nothing and says what it would do. \`done\` is for work the user says is done.`,
       inputSchema: z.object({
         project,
         actions: z
@@ -686,7 +686,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     {
       title: "Turn an alert rule on or off",
       description:
-        "Turns one of the project's alert rules (from list_alerts) on or off, as the Alerts page in SEOpen does. Turning a rule off stops new alerts of that kind and keeps the history. Without confirm: true it changes nothing and says what it would do. Change a rule only when the user asks.",
+        "Turns one of the project's alert rules (from list_alerts) on or off, as the Alerts page in SEOpen does. Turning a rule off stops new alerts of that kind and keeps the history. Without confirm: true it changes nothing and says what it would do. Which rules are on is the user's choice.",
       inputSchema: z.object({ project, rule: z.enum(ALERT_RULES), enabled: z.boolean(), confirm }),
       annotations: { ...ADDS, idempotentHint: true },
     },
@@ -703,7 +703,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     "submit_indexnow",
     {
       title: "Tell Bing and IndexNow engines about pages",
-      description: `Sends pages of the project's site to IndexNow, which passes them to Bing, Yandex, Seznam, Naver and the other IndexNow engines so they crawl them soon. Google doesn't use IndexNow. Send \`urls\` (up to ${MAX_SUBMIT_URLS}, on the site the key file is on) for pages you just changed, or leave it out to send every sitemap page that's new or changed since it was last sent. It needs the project's key file on the site (see get_indexing's indexnow.key_file); without it the tool says how to add it. Free. Without confirm: true it sends nothing and says what it would send. Send only when the user asks, or after a change they approved has deployed.`,
+      description: `Sends pages of the project's site to IndexNow, which passes them to Bing, Yandex, Seznam, Naver and the other IndexNow engines so they crawl them soon. Google doesn't use IndexNow. Send \`urls\` (up to ${MAX_SUBMIT_URLS}, on the site the key file is on) for pages you just changed, or leave it out to send every sitemap page that's new or changed since it was last sent. It needs the project's key file on the site (see get_indexing's indexnow.key_file); without it the tool says how to add it. Free. Without confirm: true it sends nothing and says what it would send. It's for pages the user asked to send, or a deployed change they approved.`,
       inputSchema: z.object({
         project,
         urls: z.array(z.url()).min(1).max(MAX_SUBMIT_URLS).optional().describe("Full URLs to send. Left out: the sitemap's new and changed pages."),

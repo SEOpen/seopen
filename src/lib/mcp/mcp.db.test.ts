@@ -1130,6 +1130,12 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       await expect(call(await connect(W.key, "legacy"), "create_project", { domain: "nope.example", confirm: true })).rejects.toThrow(/not found/);
     });
 
+    // Directories turn down a tool description that tells the model how to behave.
+    it("describe what they do, without telling the model what to do", async () => {
+      const { tools } = await client.listTools();
+      for (const t of tools) expect(t.description, t.name).not.toMatch(/\btreat (?:it|them) as\b|\bask the user\b|\bsay so\b|\bcall (?:it|this)\b|\bnever write\b|\bpass its\b|\bread (?:it|them|lists) back\b/i);
+    });
+
     it.skipIf(!rules.hasPlans)("say what the plan covers and caps on getseopen.com", async () => {
       const { tools } = await client.listTools();
       const about = (name: string) => tools.find((t) => t.name === name)?.description ?? "";
