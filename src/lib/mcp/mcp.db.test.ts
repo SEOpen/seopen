@@ -1130,6 +1130,14 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       await expect(call(await connect(W.key, "legacy"), "create_project", { domain: "nope.example", confirm: true })).rejects.toThrow(/not found/);
     });
 
+    it("carry their title in the annotations too", async () => {
+      const { tools } = await client.listTools();
+      for (const t of tools) {
+        expect(t.title, t.name).toBeTruthy();
+        expect(t.annotations?.title, t.name).toBe(t.title);
+      }
+    });
+
     // Directories turn down a tool description that tells the model how to behave.
     it("describe what they do, without telling the model what to do", async () => {
       const { tools } = await client.listTools();

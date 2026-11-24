@@ -74,9 +74,17 @@ async function run(tool: string, principal: Principal, body: () => Promise<objec
 /** A server built per request can't announce a change, and a client that believes it can opens a stream to wait for one. The SDK says true unless told. */
 const CAPABILITIES = { tools: { listChanged: false }, prompts: { listChanged: false } };
 
+/** Repeats each tool's title in its annotations, where clients and directories from before `title` was a field of its own still look. */
+function titleAnnotations(server: McpServer) {
+  const register = server.registerTool.bind(server) as (name: string, config: { title?: string; annotations?: ToolAnnotations }, cb: unknown) => unknown;
+  server.registerTool = ((name: string, config: { title?: string; annotations?: ToolAnnotations }, cb: unknown) =>
+    register(name, { ...config, annotations: { title: config.title, ...config.annotations } }, cb)) as typeof server.registerTool;
+}
+
 export function buildServer(principal: Principal): McpServer {
   const write = canWrite(principal);
   const server = new McpServer(SERVER_INFO, { capabilities: CAPABILITIES, instructions: write ? `${INSTRUCTIONS}\n\n${WRITE_INSTRUCTIONS}` : INSTRUCTIONS });
+  titleAnnotations(server);
   const ws = { workspaceId: principal.workspaceId };
 
   server.registerTool(
