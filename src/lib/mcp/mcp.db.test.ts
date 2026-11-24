@@ -1750,7 +1750,7 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       expect((await call(await connect(B.key, "modern"), "keyword_overview", { keyword: WORD })).structuredContent).toMatchObject({ needs_approval: true });
     });
 
-    it("get_page_refresh labels a page's searches for free, and quotes People also ask until max_credits covers it", async () => {
+    it("get_page_refresh labels a page's searches for free, quotes People also ask until max_credits covers it, and only for a tracked or typed search", async () => {
       const { safeFetch } = await import("@/lib/web/fetch");
       const W = await seedWorkspace("refresh");
       const scope = { workspaceId: W.ws.id, projectId: W.project.id };
@@ -1777,7 +1777,24 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       expect(free).toMatchObject({ url, search_console: { source: "Search Console", start: "2026-09-29", end: "2026-10-26", searches: 3, covered: 1, partly: 1, missing: 1 }, page_text: { from: "live", title: `Widget pricing ${run} | Shop`, h1: `Widget pricing ${run}` }, main_search: { search: main, coverage: "covered" } });
       expect((free.searches as { search: string; coverage: string }[]).map((r) => [r.search, r.coverage])).toEqual([["gadget repair", "missing"], ["widget plans compared", "partly"], [main, "covered"]]);
       expect((free.searches as { search: string; owned_by?: unknown }[]).find((r) => r.search === "widget plans compared")?.owned_by).toEqual({ page: plans, impressions: 900, position: 4 });
-      const questions = free.questions as { state: string; for: string; credits: number };
+      // The main search is known only from Search Console, so no approval buys it: Google data isn't sent to DataForSEO.
+      expect(free.questions).toMatchObject({ state: "untracked", main_search: main });
+      expect((await call(client, "get_page_refresh", { url, max_credits: 100 })).structuredContent?.questions).toMatchObject({ state: "untracked" });
+      // Nor does a keyword the project stopped tracking, or one another project tracks.
+      const [kw] = await db.insert(s.rankKeywords).values({ ...scope, keyword: main, active: false }).returning();
+      const other = await seedWorkspace("refreshother");
+      await db.insert(s.rankKeywords).values({ workspaceId: other.ws.id, projectId: other.project.id, keyword: main });
+      expect((await call(client, "get_page_refresh", { url, max_credits: 100 })).structuredContent?.questions).toMatchObject({ state: "untracked" });
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // A search of the page's that is tracked is quoted while the main one isn't.
+      await db.insert(s.rankKeywords).values({ ...scope, keyword: "gadget repair" });
+      expect((await call(client, "get_page_refresh", { url })).structuredContent?.questions).toMatchObject({ state: "needs_approval", for: "gadget repair" });
+      // So is one the user typed, whatever is tracked.
+      expect((await call(client, "get_page_refresh", { url, keyword: " Widget  Cost " })).structuredContent?.questions).toMatchObject({ state: "needs_approval", for: "widget cost" });
+      // Tracked, the main search is the one looked up.
+      await db.update(s.rankKeywords).set({ active: true }).where(eq(s.rankKeywords.id, kw.id));
+      const questions = (await call(client, "get_page_refresh", { url })).structuredContent!.questions as { state: string; for: string; credits: number };
       expect(questions).toMatchObject({ state: "needs_approval", for: main, needs_approval: true });
       expect(fetchSpy).not.toHaveBeenCalled();
 
@@ -1789,7 +1806,8 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       expect((paid.checklist as { task: string }[]).some((c) => c.task.includes("Can you repair a gadget?"))).toBe(false);
       expect((paid.checklist as { task: string }[]).some((c) => c.task.includes("widget plans compared"))).toBe(false);
 
-      // Saved now, so a read-only key gets it free; another workspace's page is refused.
+      // Saved now, so a read-only key gets it free, tracked or not, since reading it sends nothing; another workspace's page is refused.
+      await db.delete(s.rankKeywords).where(eq(s.rankKeywords.projectId, W.project.id));
       expect((await call(await connect(W.key, "modern"), "get_page_refresh", { url })).structuredContent?.questions).toMatchObject({ state: "ready", cached: true });
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       const elsewhere = await call(client, "get_page_refresh", { url: "https://elsewhere.example/" });

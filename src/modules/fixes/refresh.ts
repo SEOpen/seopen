@@ -1,6 +1,6 @@
 import { and, between, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { auditCrawls, auditPages, gscQueryPages } from "@/db/schema";
+import { auditCrawls, auditPages, gscQueryPages, rankKeywords } from "@/db/schema";
 import { creditsFor } from "@/lib/billing/gates";
 import { countOf, countWord } from "@/lib/brief";
 import { taskResults, TTL } from "@/lib/dataforseo/client";
@@ -43,7 +43,8 @@ import { pageVariants } from "./measure";
  * The "Refresh this page" panel's data, shared by `/fixes/refresh`
  * and the MCP tool `get_page_refresh`. Everything is read from stored data and one fetch of the page
  * itself, except People also ask, which comes from a saved Google results page or a priced lookup the
- * caller approves through `mayBuy`. Nothing here writes body copy: it lists searches, questions and
+ * caller approves through `mayBuy`. That lookup only ever sends a keyword the project tracks or one the
+ * caller typed: a search known only from Search Console is Google data, and stays here. Nothing here writes body copy: it lists searches, questions and
  * on-page checks, each with the data behind it.
  */
 
@@ -96,6 +97,8 @@ export interface CrawlFacts {
 
 export type QuestionsState =
   | { state: "no_search" }
+  /** Nothing saved, and none of the page's searches is a keyword the project tracks, so there is nothing to look up until one is tracked or typed. */
+  | { state: "untracked"; main: string }
   | { state: "ready"; keyword: string; at: string | null; cached: boolean; questions: { question: string; label: CoverageLabel; absent: string[]; fits: boolean }[] }
   | { state: "priced"; keyword: string; credits: number; usd: number }
   | { state: "failed"; keyword: string; error: unknown };
@@ -139,6 +142,8 @@ export interface RefreshProject {
 export interface RefreshOpts {
   /** Asked only when People also ask isn't saved: may this call spend `credits`? */
   mayBuy?: (credits: number) => Promise<boolean>;
+  /** A search the caller typed for People also ask, used instead of the page's own. */
+  keyword?: string | null;
 }
 
 /** The page's row in the newest finished crawl that has it, with the crawl's median links in. */
@@ -211,8 +216,25 @@ async function pageSource(url: string, domain: string, crawl: CrawlFacts | null)
   }
 }
 
-/** People also ask for the main search: saved for free, bought only when `mayBuy` says so. */
-async function questionsFor(keyword: string | null, market: Market, words: Set<string>, scope: ProjectScope, opts: RefreshOpts): Promise<QuestionsState> {
+/** One spelling of a search: trimmed, single-spaced and lowercase, as tracked keywords are stored. */
+export const searchKey = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+
+/** The keywords the project tracks now. */
+async function trackedKeywords(scope: ProjectScope): Promise<Set<string>> {
+  const rows = await db
+    .select({ keyword: rankKeywords.keyword })
+    .from(rankKeywords)
+    .where(and(inScope(rankKeywords, scope), eq(rankKeywords.active, true)));
+  return new Set(rows.map((r) => searchKey(r.keyword)));
+}
+
+/**
+ * People also ask: saved for free, bought only when `mayBuy` says so. `own` is the search the caller typed
+ * or the project tracks, and the only one that may be bought. Without it, a saved answer for the page's
+ * main search is still read, since that sends nothing anywhere.
+ */
+async function questionsFor(own: string | null, main: string | null, market: Market, words: Set<string>, scope: ProjectScope, opts: RefreshOpts): Promise<QuestionsState> {
+  const keyword = own ?? main;
   if (!keyword) return { state: "no_search" };
   const spec = questionsSpec(keyword, market);
   const shape = (result: SerpResult | null, at: Date | null, cached: boolean): QuestionsState => ({
@@ -228,6 +250,7 @@ async function questionsFor(keyword: string | null, market: Market, words: Set<s
   try {
     const hit = await peek<SerpResult>(spec, scope.workspaceId);
     if (hit) return shape(taskResults(hit.res)[0] ?? null, hit.createdAt, true);
+    if (!own) return { state: "untracked", main: keyword };
     const credits = creditsFor(spec.estUsd);
     if (!(await opts.mayBuy?.(credits))) return { state: "priced", keyword, credits, usd: spec.estUsd };
     const loaded = await load<SerpResult>(spec, { run: true, workspaceId: scope.workspaceId, projectId: scope.projectId });
@@ -335,9 +358,15 @@ export async function pageRefresh(scope: ProjectScope, project: RefreshProject, 
   for (const s of searches) counts[s.label]++;
   // The main search is one this page leads for, when it leads for any, and one its title or H1 is written for, when one is.
   const own = searches.filter((s) => !s.ownedBy);
-  const main = mainSearch(own.length ? own : searches, brandTerms(project.domain), termSet(page.title, page.h1));
+  const leads = own.length ? own : searches;
+  const main = mainSearch(leads, brandTerms(project.domain), termSet(page.title, page.h1));
   const span = gsc.range ? searchConsoleSpan(gsc.range) : null;
-  const questions = page.from ? await questionsFor(main?.query ?? null, { locationCode: project.locationCode, languageCode: project.languageCode }, words, scope, opts) : { state: "no_search" as const };
+  const typed = searchKey(opts.keyword ?? "");
+  const tracked = typed ? new Set<string>() : await trackedKeywords(scope);
+  // Chosen as the main search is, so it's the main search itself whenever that one is tracked.
+  const trackedMain = mainSearch(leads.filter((s) => tracked.has(searchKey(s.query))), brandTerms(project.domain), termSet(page.title, page.h1));
+  const lookup = typed || (trackedMain ? searchKey(trackedMain.query) : null);
+  const questions = page.from ? await questionsFor(lookup, main?.query ?? null, { locationCode: project.locationCode, languageCode: project.languageCode }, words, scope, opts) : { state: "no_search" as const };
   const basics = basicsOf({ main, searches, page, crawl, span, domain: project.domain, timeZone });
   return { url, range: gsc.range, span, page, crawl, searches, counts, main, questions, basics, checklist: checklistOf({ searches, questions, basics, span, timeZone }) };
 }

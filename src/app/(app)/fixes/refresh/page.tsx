@@ -6,10 +6,12 @@ import { NoProject } from "@/components/require-project";
 import { BackLink } from "@/components/ui/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Briefing } from "@/components/ui/briefing";
+import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Figure } from "@/components/ui/figure";
+import { Input, Label } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { Section } from "@/components/ui/section";
@@ -26,6 +28,8 @@ import { onProjectDomain } from "@/modules/fixes/domain";
 import { CHECKLIST_MIN_IMPRESSIONS, pageRefresh, REFRESH_DAYS, refreshHref, refreshSentence, type QuestionsState } from "@/modules/fixes/refresh";
 import { urlPath } from "@/modules/google/brief";
 import { RunPrompt } from "@/modules/keywords/components/research-ui";
+import { keywordQuery, param } from "@/modules/keywords/market";
+import { MAX_KEYWORD_LENGTH } from "@/modules/keywords/requests";
 
 export const metadata = { title: "Refresh this page · Fixes" };
 
@@ -56,6 +60,7 @@ export default async function RefreshPage({ searchParams }: PageProps<"/fixes/re
     );
   }
   const run = await wantsRun(sp.run);
+  const { q: typed } = keywordQuery(param(sp.q));
   return (
     <>
       {back}
@@ -77,17 +82,17 @@ export default async function RefreshPage({ searchParams }: PageProps<"/fixes/re
         }
       />
       <Suspense fallback={<PageSkeleton header={false} label="Reading the page" />}>
-        <Panel project={project} url={url} run={run} />
+        <Panel project={project} url={url} run={run} typed={typed} />
       </Suspense>
     </>
   );
 }
 
-async function Panel({ project, url, run }: { project: Project; url: string; run: boolean }) {
+async function Panel({ project, url, run, typed }: { project: Project; url: string; run: boolean; typed: string }) {
   const scope = projectScope(project);
   const [{ refusal, workspace }, timeZone] = await Promise.all([spendState(project.workspaceId), currentTimeZone()]);
   const free = isFree(workspace);
-  const r = await pageRefresh(scope, project, url, { mayBuy: async () => run && !refusal && !free });
+  const r = await pageRefresh(scope, project, url, { keyword: typed, mayBuy: async () => run && !refusal && !free });
   const read = r.page.from === "live" ? `the live page, read ${formatDateTime(r.page.at, timeZone)}` : r.page.from === "crawl" ? `the site audit crawl of ${formatDate(r.page.at, timeZone)}` : null;
   const missingOrPartly = r.searches.filter((s) => s.label !== "covered");
 
@@ -139,8 +144,8 @@ async function Panel({ project, url, run }: { project: Project; url: string; run
         {missingOrPartly.length === 0 && r.searches.length > 0 && <p className="mt-3 text-sm text-secondary">Every search this page showed for is on it.</p>}
       </Section>
 
-      <Section title="Questions to answer" description="People also ask, from Google's live results for the page's main search: the search with the most impressions that doesn't name the site, preferring one the title or H1 is written for.">
-        <Questions q={r.questions} url={url} timeZone={timeZone} free={free} refused={refusal?.message ?? null} />
+      <Section title="Questions to answer" description="People also ask, from Google's live results, for the page's main search when you track it, else the best of its searches that you do track. When you track none, you can type one. The main search has the most impressions and doesn't name the site, preferring one the title or H1 is written for.">
+        <Questions q={r.questions} url={url} typed={typed} timeZone={timeZone} free={free} refused={refusal?.message ?? null} />
       </Section>
 
       <Section title="On-page basics">
@@ -180,8 +185,37 @@ async function Panel({ project, url, run }: { project: Project; url: string; run
   );
 }
 
-function Questions({ q, url, timeZone, free, refused }: { q: QuestionsState; url: string; timeZone: string; free: boolean; refused: string | null }) {
+/** Starts empty on purpose: a lookup sends what the user types, never a Search Console search filled in for them. */
+function TypeSearch({ url, label }: { url: string; label: string }) {
+  return (
+    <form action="/fixes/refresh" className="mt-4 flex flex-wrap items-end gap-2">
+      <input type="hidden" name="url" value={url} />
+      <div className="grid min-w-0 flex-[1_1_16rem] gap-1.5 sm:max-w-md">
+        <Label htmlFor="q">{label}</Label>
+        <Input id="q" name="q" required maxLength={MAX_KEYWORD_LENGTH} autoComplete="off" />
+      </div>
+      <Button type="submit" variant="secondary">
+        See the price
+      </Button>
+    </form>
+  );
+}
+
+function Questions({ q, url, typed, timeZone, free, refused }: { q: QuestionsState; url: string; typed: string; timeZone: string; free: boolean; refused: string | null }) {
   if (q.state === "no_search") return <p className="text-sm text-muted">There&apos;s no main search to look up yet.</p>;
+  if (q.state === "untracked")
+    return (
+      <>
+        <p className="max-w-[72ch] text-sm text-secondary [overflow-wrap:anywhere]">
+          You don&apos;t track any of this page&apos;s searches. Its main one, “{q.main}”, is known only from Search Console, and Google data isn&apos;t sent to the search data provider. Track it in{" "}
+          <Link href="/rank" className="text-accent underline-offset-3 hover:underline">
+            Rankings
+          </Link>
+          {free ? "." : ", or type a search to look up."}
+        </p>
+        {!free && <TypeSearch url={url} label="Search to look up" />}
+      </>
+    );
   if (q.state === "failed") return <ApiError error={q.error} />;
   if (q.state === "priced") {
     if (free)
@@ -199,7 +233,7 @@ function Questions({ q, url, timeZone, free, refused }: { q: QuestionsState; url
       <RunPrompt
         title={`People also ask for “${q.keyword}” isn't loaded`}
         description="The live top 10 for it on Google, kept 7 days. Nothing is spent until you run it."
-        href={`${refreshHref(url)}&run=1`}
+        href={`${refreshHref(url)}${typed ? `&q=${encodeURIComponent(typed)}` : ""}&run=1`}
         costUsd={q.usd}
         refused={refused}
       />
