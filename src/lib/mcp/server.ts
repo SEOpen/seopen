@@ -12,6 +12,7 @@ import { indexingData } from "./indexing";
 import { inspectUrlData, inspectUrlsData, MAX_INSPECT_URLS } from "./inspect";
 import { canWrite, type Principal } from "./keys";
 import { consumeLimit } from "./limits";
+import { plainRefusal } from "./plan-wording";
 import { registerPrompts } from "./prompts";
 import { registerResearchTools } from "./research-tools";
 import { registerWriteTools } from "./write-tools";
@@ -64,7 +65,7 @@ async function run(tool: string, principal: Principal, body: () => Promise<objec
   try {
     return ok(await withBillingContext({ source: "mcp" }, body));
   } catch (e) {
-    if (e instanceof ToolError || e instanceof OpError) return fail(e.message);
+    if (e instanceof ToolError || e instanceof OpError) return fail(plainRefusal(e.message));
     console.error(`[mcp] ${tool} failed for workspace ${principal.workspaceId}`, e);
     return fail("Something went wrong reading this data. Try again, or open SEOpen to check.");
   }

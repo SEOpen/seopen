@@ -1360,7 +1360,8 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       for (const confirm of [false, true]) {
         const out = await call(freeClient, "create_project", { domain: `www.blog.${site}`, confirm });
         expect(out.isError).toBe(true);
-        expect(out.content[0].text!.replaceAll(site, "SITE")).toMatch(/^Another Free workspace already has SITE, .* Upgrade to add it here/);
+        expect(out.content[0].text!.replaceAll(site, "SITE")).toMatch(/^Another Free workspace already has SITE, .* Ask the owner of that workspace to archive it there/);
+        expect(out.content[0].text).not.toMatch(/upgrade/i);
         expect(out.content[0].text).not.toContain(holder.name);
       }
       expect(await db.$count(s.projects, eq(s.projects.workspaceId, free.id))).toBe(0);

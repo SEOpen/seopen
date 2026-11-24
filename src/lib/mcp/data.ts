@@ -55,6 +55,7 @@ import { DEPTH_HINT_DAYS, type DepthHint } from "@/modules/rank/depth-hint";
 import { loadDepthHint, loadResultsToCarry, loadTracker, resolveWindow, shiftDate } from "@/modules/rank/queries";
 import { searchConsoleAverages } from "@/modules/rank/search-console";
 import { canResearch, canWrite, type Principal } from "./keys";
+import { plainRefusal } from "./plan-wording";
 
 /**
  * What the MCP read tools return. Database reads only: no DataForSEO
@@ -1209,7 +1210,7 @@ export async function usageData(ws: WorkspaceScope) {
     ...(isInternal(u.state.workspace)
       ? { spend_usd: { this_month: round(u.spentUsd, 2), note: `Everything this workspace cost this month: research lookups plus ${rules.hasPlans ? "the work the plan covers" : "the checks it runs"}, such as rank checks, site audits, backlink snapshots and the Monday AI run.`, ceiling: Number.isFinite(u.ceilingUsd) ? u.ceilingUsd : null, ceiling_credits: Number.isFinite(u.ceilingUsd) ? creditsFor(u.ceilingUsd) : null } }
       : {}),
-    paid_lookups: block ? { allowed: false, reason: block.message } : { allowed: true },
+    paid_lookups: block ? { allowed: false, reason: plainRefusal(block.message) } : { allowed: true },
   };
 }
 
