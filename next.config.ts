@@ -9,7 +9,7 @@ import { APP_PREFIXES, splitHosts } from "./src/lib/hosts";
 
 // Read at build time. Production sets both hosts; local dev and previews serve everything from one.
 const hosts = splitHosts();
-const escape = (host: string) => host.replace(/\./g, "\\.");
+const escape = (host: string) => host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const nextConfig: NextConfig = {
   cacheComponents: true,

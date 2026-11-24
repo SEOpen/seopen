@@ -1360,7 +1360,7 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       for (const confirm of [false, true]) {
         const out = await call(freeClient, "create_project", { domain: `www.blog.${site}`, confirm });
         expect(out.isError).toBe(true);
-        expect(out.content[0].text).toMatch(new RegExp(`^Another Free workspace already has ${site.replace(/\./g, "\\.")}, .* Upgrade to add it here`));
+        expect(out.content[0].text!.replaceAll(site, "SITE")).toMatch(/^Another Free workspace already has SITE, .* Upgrade to add it here/);
         expect(out.content[0].text).not.toContain(holder.name);
       }
       expect(await db.$count(s.projects, eq(s.projects.workspaceId, free.id))).toBe(0);
@@ -1843,7 +1843,7 @@ describe.skipIf(!ready)("MCP endpoint", () => {
         ["Theirs", false],
         ["No site", null],
       ]);
-      expect(found.message).toMatch(new RegExp(`1 listing links to a website other than ${W.project.domain.replace(/\./g, "\\.")}: betaweb\\.example\\. Track one only if it's this project's business\\.$`));
+      expect((found.message as string).replaceAll(W.project.domain, "SITE")).toMatch(/1 listing links to a website other than SITE: betaweb\.example\. Track one only if it's this project's business\.$/);
     });
 
     it("says research credits are unlimited instead of sending a null count", async () => {

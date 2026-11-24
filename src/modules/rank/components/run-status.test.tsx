@@ -91,7 +91,7 @@ describe("the failed check's callout", () => {
     const html = await text(state({ newestRun: posting }));
     expect(html).toContain("Last check didn't start");
     expect(html).not.toContain("runs it again");
-    expect(html).toContain(FREE_PLAN_REFUSAL.message.replace(/'/g, "'"));
+    expect(html).toContain(FREE_PLAN_REFUSAL.message);
   });
 });
 
