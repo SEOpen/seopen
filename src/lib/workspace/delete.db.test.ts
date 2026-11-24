@@ -11,7 +11,7 @@ const calls: string[] = [];
 const cancel = vi.fn(async () => void calls.push("stripe"));
 const google = vi.fn(async (): Promise<{ ok: true } | { ok: false; error: string }> => (calls.push("google"), { ok: true }));
 const posthog = vi.fn(async (): Promise<{ ok: true } | { ok: false; error: string }> => (calls.push("posthog"), { ok: true }));
-const isAdmin = vi.fn(async () => false);
+const isAdmin = vi.fn<(userId?: string) => Promise<boolean>>(async () => false);
 const failure = vi.hoisted(() => ({ current: undefined as { logTag: string; message: string } | undefined }));
 vi.mock("@/billing-provider", () => ({
   provider: {
@@ -30,7 +30,7 @@ const ready = await testDb();
 const { db } = await import("@/db");
 const s = await import("@/db/schema");
 const { OWNER_WORKSPACE_ID } = await import("@/lib/workspace");
-const { deleteWorkspaceOp } = await import("./delete");
+const { accountsGoingWith, deleteUserAsAdminOp, deleteWorkspaceAsAdminOp, deleteWorkspaceOp, userDeletion } = await import("./delete");
 const { deleteProjectOp } = await import("@/lib/ops/projects");
 
 async function addUser() {
@@ -280,5 +280,114 @@ describe.skipIf(!ready)("deleteWorkspaceOp", () => {
     posthog.mockResolvedValueOnce({ ok: false, error: "posthog down" });
     await expect(deleteWorkspaceOp(scope, actor, "delete")).rejects.toThrow("PostHog couldn't be disconnected");
     expect(await statusOf(ws.id)).toBe("suspended");
+  });
+});
+
+describe.skipIf(!ready)("deleting from Admin", () => {
+  const admin = randomUUID();
+  const actor = { userId: admin, source: "app" as const };
+  beforeEach(() => {
+    calls.length = 0;
+    vi.clearAllMocks();
+    isAdmin.mockImplementation(async (userId) => userId === admin);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  const gone = async (user: { id: string }, ws: { id: number }) => {
+    expect(await db.$count(s.workspaces, eq(s.workspaces.id, ws.id))).toBe(0);
+    expect(await db.$count(s.users, eq(s.users.id, user.id))).toBe(0);
+  };
+
+  it("deletes someone else's workspace with its subscription, connections and account, and no other", async () => {
+    const a = await seed();
+    const b = await seed();
+    expect(await accountsGoingWith(a.ws.id)).toEqual([a.user.email]);
+    expect(await deleteWorkspaceAsAdminOp(a.ws.id, actor, "delete")).toEqual({ dryRun: false, accountRemoved: false, message: `Deleted ${a.ws.name}.` });
+    expect(calls[0]).toBe("stripe");
+    expect(calls.slice(1).sort()).toEqual(["google", "posthog"]);
+    await gone(a.user, a.ws);
+    expect(await statusOf(b.ws.id)).toBe("active");
+    expect(await db.$count(s.users, eq(s.users.id, b.user.id))).toBe(1);
+  });
+
+  it("refuses anyone who isn't an admin, the workspace's own owner included, and an agent's key", async () => {
+    const { user, ws } = await seed();
+    for (const who of [{ userId: user.id, source: "app" as const }, { userId: admin, source: "mcp" as const }]) {
+      await expect(deleteWorkspaceAsAdminOp(ws.id, who, "delete")).rejects.toThrow("Only an admin can do this.");
+      await expect(deleteUserAsAdminOp(user.id, who, "delete")).rejects.toThrow("Only an admin can do this.");
+    }
+    expect(calls).toEqual([]);
+    expect(await statusOf(ws.id)).toBe("active");
+  });
+
+  it("refuses the owner's workspace, an unconfirmed delete and a running check", async () => {
+    const { user, ws, project } = await seed();
+    await expect(deleteWorkspaceAsAdminOp(OWNER_WORKSPACE_ID, actor, "delete")).rejects.toThrow("The owner's workspace can't be deleted.");
+    await expect(deleteWorkspaceAsAdminOp(ws.id, actor, "")).rejects.toThrow("Type delete to confirm.");
+    await expect(deleteUserAsAdminOp(user.id, actor, "")).rejects.toThrow("Type delete to confirm.");
+    await db.insert(s.aiRuns).values({ workspaceId: ws.id, projectId: project.id, status: "running" });
+    await expect(deleteWorkspaceAsAdminOp(ws.id, actor, "delete")).rejects.toThrow("A check is still running.");
+    await expect(deleteUserAsAdminOp(user.id, actor, "delete")).rejects.toThrow(`A check is still running in ${ws.name}.`);
+    expect(calls).toEqual([]);
+    expect(await statusOf(ws.id)).toBe("active");
+  });
+
+  it("keeps everything when the cancel fails, in words for an admin", async () => {
+    const { user, ws } = await seed();
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    cancel.mockRejectedValueOnce(new Error("provider down"));
+    await expect(deleteUserAsAdminOp(user.id, actor, "delete")).rejects.toThrow("The workspace's subscription couldn't be confirmed as cancelled");
+    expect(await statusOf(ws.id)).toBe("active");
+    expect(await db.$count(s.users, eq(s.users.id, user.id))).toBe(1);
+  });
+
+  it("deletes an account with every workspace it alone is in, through the same steps, and starts its inbox claim's wait", async () => {
+    const { user, ws } = await seed();
+    const [second] = await db.insert(s.workspaces).values({ name: `second-${randomUUID()}` }).returning();
+    await db.insert(s.workspaceMembers).values({ workspaceId: second.id, userId: user.id, role: "owner" });
+    await db.insert(s.signupClaims).values({ hash: `test-${randomUUID()}`, userId: user.id });
+    await db.insert(s.waitlist).values({ email: user.email });
+    expect((await userDeletion(user.id, admin)).workspaces.map((w) => w.id)).toEqual([ws.id, second.id]);
+    expect(await deleteUserAsAdminOp(user.id, actor, "delete")).toEqual({ message: `Deleted ${user.email}.` });
+    expect(calls.filter((c) => c === "stripe")).toHaveLength(2);
+    await gone(user, ws);
+    await gone(user, second);
+    expect(await db.$count(s.waitlist, eq(s.waitlist.email, user.email))).toBe(0);
+    const [claim] = await db.select().from(s.signupClaims).where(eq(s.signupClaims.userId, user.id));
+    expect(claim.releasedAt).not.toBeNull();
+  });
+
+  it("deletes an account with no workspace, and one that is only a member of someone else's, which stays", async () => {
+    const alone = await addUser();
+    await deleteUserAsAdminOp(alone.id, actor, "delete");
+    expect(await db.$count(s.users, eq(s.users.id, alone.id))).toBe(0);
+
+    const { ws, user } = await seed();
+    const member = await addUser();
+    await db.insert(s.workspaceMembers).values({ workspaceId: ws.id, userId: member.id, role: "member" });
+    await deleteUserAsAdminOp(member.id, actor, "delete");
+    expect(await db.$count(s.users, eq(s.users.id, member.id))).toBe(0);
+    expect(await db.$count(s.users, eq(s.users.id, user.id))).toBe(1);
+    expect(await statusOf(ws.id)).toBe("active");
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses the admin's own account, another admin, the owner workspace's owner and a workspace others are in", async () => {
+    const self = await addUser();
+    isAdmin.mockImplementation(async (userId) => userId === self.id || userId === admin);
+    await expect(deleteUserAsAdminOp(self.id, { userId: self.id, source: "app" }, "delete")).rejects.toThrow("You can't delete your own account here.");
+    await expect(deleteUserAsAdminOp(self.id, actor, "delete")).rejects.toThrow("This is an admin.");
+
+    const owner = await addUser();
+    await db.insert(s.workspaceMembers).values({ workspaceId: OWNER_WORKSPACE_ID, userId: owner.id, role: "owner" });
+    await expect(deleteUserAsAdminOp(owner.id, actor, "delete")).rejects.toThrow("The owner's workspace can't be deleted.");
+    await db.delete(s.users).where(eq(s.users.id, owner.id));
+
+    const shared = await seed();
+    const second = await addUser();
+    await db.insert(s.workspaceMembers).values({ workspaceId: shared.ws.id, userId: second.id, role: "member" });
+    await expect(deleteUserAsAdminOp(shared.user.id, actor, "delete")).rejects.toThrow(`Other people belong to ${shared.ws.name}.`);
+    expect(await statusOf(shared.ws.id)).toBe("active");
+    expect(calls).toEqual([]);
   });
 });

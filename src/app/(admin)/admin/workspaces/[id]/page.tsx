@@ -1,10 +1,13 @@
 import { and, asc, count, eq, gte, isNull, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { deleteWorkspaceAsAdmin } from "@/app/actions/admin";
 import { setWorkspaceSuspended } from "@/app/actions/billing";
 import { ceilingCaption, columnsWithData, workspaceSentence } from "@/components/admin/brief";
+import { AdminDeleteForm } from "@/components/admin/delete-form";
 import { BackLink } from "@/components/ui/back-link";
 import { Briefing } from "@/components/ui/briefing";
 import { Button } from "@/components/ui/button";
+import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { DataTable, type ColumnSpec } from "@/components/ui/data-table";
 import { Figure } from "@/components/ui/figure";
@@ -20,6 +23,8 @@ import { formatDateTime, formatNumber, formatUsd } from "@/lib/format";
 import { OWNER_WORKSPACE_ID } from "@/lib/workspace";
 import { requireAdmin } from "@/lib/admin/access";
 import { currentTimeZone } from "@/lib/workspace/current";
+import { accountsGoingWith } from "@/lib/workspace/delete";
+import { adminDeleteWorkspaceDescription } from "@/lib/workspace/delete-copy";
 import { admin } from "@/plan-policy/admin";
 import { rules } from "@/plan-policy/rules";
 import { shell as plan } from "@/plan-policy/shell";
@@ -63,7 +68,7 @@ function Facts({ items }: { items: [string, string][] }) {
 /**
  * One workspace in full: what needs attention, its members, projects and spend by module this month,
  * with its plan, what the plan policy adds (`@/plan-policy/admin`) and connections beside them.
- * Read-only apart from Suspend and the plan policy's own form.
+ * Read-only apart from Suspend, Delete and the plan policy's own form.
  */
 export default async function AdminWorkspacePage({ params }: PageProps<"/admin/workspaces/[id]">) {
   await requireAdmin();
@@ -138,7 +143,7 @@ export default async function AdminWorkspacePage({ params }: PageProps<"/admin/w
 
   const limits = limitsFor(ws);
   // What its paid calls are refused against, not the plan's figure. Asked after the check above, since it throws on a missing workspace.
-  const [{ ceilingUsd: ceiling }, extra] = await Promise.all([spendState(id), admin.workspace(ws, timeZone)]);
+  const [{ ceilingUsd: ceiling }, extra, accounts] = await Promise.all([spendState(id), admin.workspace(ws, timeZone), accountsGoingWith(id)]);
   const spent = usage?.spentUsd ?? 0;
   const suspended = ws.status === "suspended";
   const activeProjects = projectRows.filter((p) => p.state === "Active").length;
@@ -268,6 +273,15 @@ export default async function AdminWorkspacePage({ params }: PageProps<"/admin/w
           )}
         </div>
       </div>
+
+      {ws.id !== OWNER_WORKSPACE_ID && (
+        <Card className="mt-8">
+          <CardHeader title="Delete this workspace" description={adminDeleteWorkspaceDescription(accounts)} />
+          <CardBody>
+            <AdminDeleteForm action={deleteWorkspaceAsAdmin} name="workspaceId" value={ws.id} label="Delete workspace" />
+          </CardBody>
+        </Card>
+      )}
     </>
   );
 }

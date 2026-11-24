@@ -53,7 +53,7 @@ PostHog, on the free plan with no paid add-ons. Code: `src/lib/analytics/`.
 | `user_signed_up` | Better Auth's `user.create.after` hook (`src/lib/auth/index.ts`) | none |
 | `project_created` | `createProjectOp` (the form and the MCP `create_project` tool); `importFromSearchConsole` | `project_id`, `source` (`form`, `mcp` or `search_console`), `competitors` |
 | `project_deleted` | `deleteProjectOp` (the Delete project form in an archived project's Settings; no MCP tool) | `project_id` |
-| `workspace_deleted` | `deleteWorkspaceOp` (the Delete this workspace form on `/settings`; no MCP tool) | none |
+| `workspace_deleted` | `deleteWorkspaceOp` (the Delete this workspace form on `/settings`), `deleteWorkspaceAsAdminOp` and `deleteUserAsAdminOp` (the Delete forms in Admin); no MCP tool | `by` (`owner` or `admin`) |
 | `module_activated` | `module: "gsc"`: the Google OAuth callback, on every successful connection. `posthog`: the PostHog OAuth callback, on every successful connection. `plausible`: `connectPlausible`, on every key Plausible accepts. `umami`: `connectUmami`, on every credential Umami accepts. `rank`: the first keywords added to a project. `audit`: a project's first crawl. `ai`: the first prompts added to a project | `module`, `project_id` (not for `gsc`), plus `keywords`, `max_pages` or `prompts` and `platforms` |
 | `api_key_created` | `createApiKeyAction` (MCP (`/agents`)) | `write` (the key can make changes), `research` (the key can spend research credits) |
 | `fixes_applied` | `markFixesApplied` (the MCP `mark_fix_applied` tool and the Fixes page) | `project_id`, `count`, `via` (`mcp` or `app`) |
