@@ -1,5 +1,4 @@
 import { purgeAuthRows } from "@/lib/auth/retention";
-import { purgeUnconfirmedSignups } from "@/lib/signup";
 import { checkDataForSEOBalance } from "@/lib/dataforseo/balance";
 import { purgeExpiredClaims } from "@/lib/dataforseo/claims";
 import { purgeExpiredCache } from "@/lib/dataforseo/retention";
@@ -42,12 +41,11 @@ export const jobs: AnyJobDef[] = [
       const resumed = await step("resuming paused jobs", () => resumeLapsedPauses(enqueue));
       const claims = await step("purging lapsed lookup claims", () => purgeExpiredClaims());
       const auth = await step("purging expired sessions and rate limits", () => purgeAuthRows());
-      const unconfirmed = await step("purging unconfirmed sign-ups", () => purgeUnconfirmedSignups());
       const lookups = await step("purging expired lookups", () => purgeExpiredCache());
       const rankTasks = await step("purging finished rank tasks", () => purgeFinishedTasks());
       const inspections = await step("purging old URL inspections", () => purgeOldInspections());
       const sent = await sendSpendAlerts();
-      return { ...sent, released, platform, balance, resumed, claims, auth, unconfirmed, lookups, rankTasks, inspections };
+      return { ...sent, released, platform, balance, resumed, claims, auth, lookups, rankTasks, inspections };
     },
   }),
 ];

@@ -12,7 +12,7 @@ export const users = pgTable("users", {
   name: text().notNull().default(""),
   image: text(),
   emailVerified: boolean().notNull().default(false),
-  /** When the welcome email was claimed (src/lib/welcome-email.ts). Null until the first sign-in. */
+  /** When a hosted service's welcome email was claimed (src/lib/public-signup/types.ts, onSession). Always null in this repo. */
   welcomeEmailAt: ts(),
   /** The weekly recap email (src/lib/recap), which the person turns on in Settings. Off until they do. */
   weeklyRecap: boolean().notNull().default(false),
@@ -20,7 +20,7 @@ export const users = pgTable("users", {
   alertEmails: boolean().notNull().default(true),
   /**
    * Where a self sign-up's first visit to the site came from, set once when the account is made and
-   * never after (src/lib/first-visit.ts): the campaign tag (utm_source or ref), the other site that
+   * never after (src/lib/public-signup/types.ts, beforeCreate): the campaign tag (utm_source or ref), the other site that
    * linked to us, and the site page it landed on. Null when there was none, and for invites.
    */
   firstSource: text(),

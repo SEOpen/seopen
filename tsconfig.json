@@ -22,6 +22,7 @@
       "@/billing-*": ["./src/lib/billing/stripe-*", "./src/lib/billing/no-*"],
       "@/admin-*": ["./src/components/shell/admin-*", "./src/components/shell/no-admin-*"],
       "@/plan-policy/*": ["./src/lib/billing/plan-policy/*", "./src/lib/billing/self-hosted/*"],
+      "@/public-signup/*": ["./src/lib/public-signup/hosted/*", "./src/lib/public-signup/none/*"],
       "@/*": ["./src/*"]
     }
   },

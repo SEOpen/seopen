@@ -6,6 +6,7 @@ import { planPolicyAliases } from "./src/lib/billing/policy-file";
 import { billingProviderFile } from "./src/lib/billing/provider-file";
 import { docsRedirects, hasMarketingSite } from "./src/lib/docs-redirects";
 import { APP_PREFIXES, splitHosts } from "./src/lib/hosts";
+import { publicSignupAliases } from "./src/lib/public-signup/file";
 
 // Read at build time. Production sets both hosts; local dev and previews serve everything from one.
 const hosts = splitHosts();
@@ -73,9 +74,10 @@ const nextConfig: NextConfig = {
     return [{ source: "/:path*", has: [{ type: "host", value: escape(hosts.app) }], headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }, ...security] }];
   },
   turbopack: {
-    // A billing provider where the copy has one, none otherwise (src/lib/billing/provider.ts), and
-    // extra Admin pages where they exist (src/components/shell/admin-extra-file.ts).
-    resolveAlias: { "@/billing-provider": billingProviderFile(process.cwd()), "@/admin-extra": adminExtraFile(process.cwd()), ...planPolicyAliases(process.cwd()) },
+    // A billing provider where the copy has one, none otherwise (src/lib/billing/provider.ts), extra
+    // Admin pages where they exist (src/components/shell/admin-extra-file.ts), and public sign-up
+    // where the copy has it (src/lib/public-signup/file.ts).
+    resolveAlias: { "@/billing-provider": billingProviderFile(process.cwd()), "@/admin-extra": adminExtraFile(process.cwd()), ...planPolicyAliases(process.cwd()), ...publicSignupAliases(process.cwd()) },
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],

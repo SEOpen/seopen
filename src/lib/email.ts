@@ -1,5 +1,4 @@
 import { Resend } from "resend";
-import { rules } from "@/plan-policy/rules";
 import { siteOrigin } from "@/lib/hosts";
 import { contactEmail, postalAddress } from "@/lib/instance";
 
@@ -112,43 +111,6 @@ ${(o.blocks ?? []).join("\n")}
 export { layout as emailLayout, esc as escapeEmailHtml };
 export const emailTextFooter = () => `SEOpen: ${siteOrigin()}${addressText()}`;
 
-export function verifyEmailMessage(url: string) {
-  return {
-    subject: "Confirm your SEOpen email",
-    html: layout({
-      preheader: "One click to finish setting up your SEOpen account.",
-      heading: "Confirm your email",
-      paragraphs: ["Confirm this address to finish setting up your SEOpen account. You'll choose your password next."],
-      cta: { label: "Confirm email", url },
-      note: "The link expires in 24 hours. Didn't sign up? Ignore this email and no account is made.",
-    }),
-    text: `Confirm your SEOpen email\n\nConfirm this address to finish setting up your SEOpen account. You'll choose your password next:\n${url}\n\nThe link expires in 24 hours. Didn't sign up? Ignore this email and no account is made.\n\nSEOpen: ${siteOrigin()}${addressText()}`,
-  };
-}
-
-/**
- * A sign-up this inbox can't make (src/lib/signup.ts). The form says the same thing for every
- * address, so nobody learns from it which inboxes have an account; this tells the inbox itself.
- * It never names the other address, since a +tag outside Gmail could in theory reach someone else.
- */
-export function inboxTakenMessage(o: { signInUrl: string; until?: string }) {
-  const why = o.until
-    ? `This inbox had a SEOpen account that was deleted recently, so it can make a new one from ${o.until}.`
-    : "This inbox already has a SEOpen account, so we didn't make another. Sign in with that account instead. If you've forgotten its password, reset it from the sign-in page.";
-  const rule = "SEOpen counts a Gmail address with or without dots, and any address with or without a +tag, as the same inbox.";
-  return {
-    subject: o.until ? "You can make a new SEOpen account soon" : "You already have a SEOpen account",
-    html: layout({
-      preheader: o.until ? `This inbox can make a new SEOpen account from ${o.until}.` : "This inbox already has a SEOpen account.",
-      heading: o.until ? "Not just yet" : "You already have an account",
-      paragraphs: ["Someone, probably you, just tried to make a SEOpen account with this address.", why, rule],
-      cta: { label: "Go to sign in", url: o.signInUrl },
-      note: "Didn't try to sign up? Ignore this email. Nothing changed.",
-    }),
-    text: `${o.until ? "Not just yet" : "You already have an account"}\n\nSomeone, probably you, just tried to make a SEOpen account with this address. ${why}\n\n${rule}\n\nSign in: ${o.signInUrl}\n\nDidn't try to sign up? Ignore this email. Nothing changed.\n\nSEOpen: ${siteOrigin()}${addressText()}`,
-  };
-}
-
 export function resetPasswordMessage(url: string) {
   return {
     subject: "Reset your SEOpen password",
@@ -163,24 +125,6 @@ export function resetPasswordMessage(url: string) {
   };
 }
 
-export function inviteMessage(url: string, google: boolean) {
-  const googleLine = google ? " You can also sign in with Google using this address." : "";
-  return {
-    subject: "Your SEOpen invite",
-    html: layout({
-      preheader: "Your place in the SEOpen beta is ready. Choose a password to get in.",
-      heading: "You're in",
-      paragraphs: [
-        "Your place in the SEOpen beta is ready. Choose a password to open your account.",
-        `Then add your site.${rules.newAccountLine("invite") ? ` ${rules.newAccountLine("invite")}` : ""}${googleLine}`,
-      ],
-      cta: { label: "Choose a password", url },
-      note: "The link works once and expires in 7 days. Didn't ask to join? Ignore this email.",
-    }),
-    text: `You're in\n\nYour place in the SEOpen beta is ready. Choose a password to open your account:\n${url}\n\nThen add your site.${rules.newAccountLine("invite") ? ` ${rules.newAccountLine("invite")}` : ""}${googleLine}\n\nThe link works once and expires in 7 days. Didn't ask to join? Ignore this email.\n\nSEOpen: ${siteOrigin()}${addressText()}`,
-  };
-}
-
 export function adminInviteMessage(url: string) {
   return {
     subject: "Your SEOpen admin account",
@@ -192,27 +136,6 @@ export function adminInviteMessage(url: string) {
       note: `The link works once and expires in 7 days. Not expecting this? Ignore this email${writeTo(" and write to")}.`,
     }),
     text: `You're an admin\n\nAn SEOpen admin added you as an admin. Choose a password, then sign in and open Admin from the menu:\n${url}\n\nThe link works once and expires in 7 days. Not expecting this? Ignore this email${writeTo(" and write to")}.\n\nSEOpen: ${siteOrigin()}${addressText()}`,
-  };
-}
-
-/** The first-run path every plan has, Free included: a site audit, the Fixes list it makes, and an agent to work through it. */
-export function welcomeMessage(url: string) {
-  const steps = [
-    "Start by adding your site and running a site audit. It checks your pages for problems that can hold back search traffic.",
-    "Fixes then lists what's worth changing. Mark a fix as changed and SEOpen checks the live page for it and, with Search Console linked, measures what it did.",
-    "To make the changes from your own code, connect your coding agent on the MCP page. It reads the same list, works through it on a branch and records each fix.",
-  ];
-  const note = "You're getting this once, because you opened a SEOpen account.";
-  return {
-    subject: "Welcome to SEOpen",
-    html: layout({
-      preheader: "Your account is ready. Add your site, run an audit and work through the fixes.",
-      heading: "Welcome to SEOpen",
-      paragraphs: ["Your SEOpen account is ready.", ...steps],
-      cta: { label: "Add your site", url },
-      note,
-    }),
-    text: `Welcome to SEOpen\n\nYour SEOpen account is ready.\n\n${steps.join("\n\n")}\n\nAdd your site:\n${url}\n\n${note}\n\nSEOpen: ${siteOrigin()}${addressText()}`,
   };
 }
 

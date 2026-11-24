@@ -8,8 +8,8 @@ import type { PlanRules } from "../policy";
  * platform cap above them all (spend.ts).
  *
  * Only a workspace the operator made runs paid checks: those start on the internal plan (hooks.ts).
- * One a stranger made by signing up, while sign-up is open, can't spend the operator's DataForSEO
- * money, nor can any workspace whose stored plan is something else.
+ * One a stranger made by signing up, when older versions had public sign-up, can't spend the
+ * operator's DataForSEO money, nor can any workspace whose stored plan is something else.
  */
 
 const OK = { ok: true } as const;

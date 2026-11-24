@@ -43,7 +43,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * A workspace of the account's own, unless it already has one. Used by invites, admins and self
- * sign-up (src/lib/signup.ts), which passes `by: "signup"`. Its plan is the plan policy's
+ * sign-up (a hosted service's, src/lib/public-signup/types.ts), which passes `by: "signup"`. Its plan is the plan policy's
  * (`newWorkspacePlan`, src/lib/billing/policy.ts).
  * Safe to call any number of times at once: a lock on the account makes a second call wait, then
  * find the first one's workspace. Pass `tx` to run inside a caller's transaction. Returns whether

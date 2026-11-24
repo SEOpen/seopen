@@ -66,15 +66,10 @@ them: on a server, remove the flag. To see why the mode is off for you, open
 
 - `BETTER_AUTH_SECRET`: optional. Unset, it's derived from `SEOPEN_SECRET_KEY`. Changing either
   signs everyone out.
-- `SEOPEN_SIGNUP_OPEN=1` opens public sign-up (email and Google). Unset, sign-up is closed and you
-  make accounts with `pnpm owner:create`. Leave it off unless you mean to let strangers make accounts.
-  A workspace someone makes by signing up runs no paid checks: it can read Search Console and
-  Analytics, but anything that would spend your DataForSEO money is refused.
-- `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`: Cloudflare Turnstile, the bot check on email
-  sign-up while it's open. Make a widget in the Cloudflare dashboard listing the hosts the sign-up
-  form is on. Without the secret, a production build refuses every email sign-up; development lets
-  them through. Cloudflare's test keys always pass and work locally: site
-  `1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA`.
+- There is no public sign-up: you make every account, with `pnpm owner:create` or, for another admin,
+  from Admin → Users. `SEOPEN_SIGNUP_OPEN`, `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` did
+  something in older versions and do nothing now. An account someone made by signing up before then
+  still signs in, and its workspace still runs no paid checks.
 
 ## Email and alerts
 
@@ -89,7 +84,7 @@ What it sends:
   `CRON_SECRET`) a worker that stopped. Each goes at most once a day.
 - **To the people on a project:** its alert emails (a page with clicks breaks, a keyword leaves the top 10) and the
   weekly recap, once they turn them on.
-- **To anyone signing in with a password:** verification, password reset and welcome emails.
+- **To anyone signing in with a password:** password reset emails, and an invite when you add an admin.
 
 To turn it on:
 
@@ -112,7 +107,7 @@ The server log says why an alert wasn't emailed: `RESEND_API_KEY isn't set here`
 
 Without `RESEND_API_KEY`, `pnpm dev` prints each email to the server log, so sign-in links still work
 on your own machine. A production build (`next start` or the Docker image) refuses to send instead.
-Then nobody can sign up with email or use "Forgot your password?": make accounts with
+Then nobody can use "Forgot your password?": make accounts with
 `pnpm owner:create` and set a forgotten password with `pnpm user:password you@example.com` (in
 Docker, `docker compose exec web pnpm user:password ...`).
 

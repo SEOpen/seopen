@@ -85,7 +85,7 @@ export async function deleteWorkspaceOp(scope: WorkspaceScope, actor: Actor, typ
         if (admins.get(userId) || (await tx.$count(workspaceMembers, eq(workspaceMembers.userId, userId))) > 0) continue;
         const [gone] = await tx.delete(users).where(eq(users.id, userId)).returning({ email: users.email });
         if (gone) await tx.delete(waitlist).where(eq(waitlist.email, gone.email.toLowerCase()));
-        // A self sign-up's inbox claim stays, as a hash, and starts its wait before it can sign up again (src/lib/signup.ts).
+        // A self sign-up's inbox claim stays, as a hash, and starts its wait before it can sign up again, where the copy has public sign-up.
         await tx.update(signupClaims).set({ releasedAt: new Date() }).where(eq(signupClaims.userId, userId));
         accountRemoved ||= userId === actor.userId;
       }

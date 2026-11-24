@@ -1,13 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { SignInForm } from "@/components/auth/sign-in-form";
 import { Card, CardBody } from "@/components/ui/card";
 import { Callout } from "@/components/ui/callout";
 import { googleLoginConfigured } from "@/lib/auth";
 import { safeCallback } from "@/lib/auth/redirect";
-import { waitlistHref } from "@/lib/hosts";
-import { SIGNUP_ERRORS } from "@/lib/signup";
-import { signupOpen } from "@/lib/signup-open";
+import { signupPage } from "@/public-signup/page";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -19,12 +16,10 @@ const ERRORS: Record<string, string> = {
 export default async function SignInPage({ searchParams }: PageProps<"/sign-in">) {
   const sp = await searchParams;
   const next = safeCallback(sp.next);
-  // With sign-up open, a Google sign-in can also be refused for making a second account for one inbox.
-  const errors = signupOpen() ? { ...ERRORS, ...SIGNUP_ERRORS } : ERRORS;
+  const errors: Record<string, string> = { ...ERRORS, ...signupPage.signInErrors() };
   const error = typeof sp.error === "string" ? (errors[sp.error] ?? "Google sign-in didn't work. Try your email and password.") : null;
   // Sent here by SEOpen's OAuth server (src/lib/auth/oauth.ts): signing in carries on to the consent page.
   const connecting = typeof sp.sig === "string" && typeof sp.client_id === "string";
-  const waitlist = waitlistHref();
 
   return (
     <Card>
@@ -33,23 +28,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/sign-in">
         {connecting && <p className="text-sm text-secondary">An app wants to connect to SEOpen. Sign in, then choose what it may do.</p>}
         {error && <Callout tone="bad" title={error} />}
         <SignInForm next={next} google={googleLoginConfigured} />
-        <p className="border-t border-line pt-4 text-center text-sm text-muted">
-          New to SEOpen?{" "}
-          {signupOpen() ? (
-            <Link className="underline" href="/sign-up">
-              Start for free
-            </Link>
-          ) : waitlist ? (
-            <>
-              It&apos;s in private beta.{" "}
-              <a className="underline" href={waitlist}>
-                Join the waitlist
-              </a>
-            </>
-          ) : (
-            "Sign-up isn't open on this copy of SEOpen."
-          )}
-        </p>
+        <signupPage.SignInFooter />
       </CardBody>
     </Card>
   );

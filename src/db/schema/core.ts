@@ -56,7 +56,7 @@ export const GLOBAL_TABLES = [
   "platform_usage",
   "stripe_events",
   "trial_claims",
-  // One Free account per inbox (src/lib/signup.ts): it outlives the account on purpose, like trial claims.
+  // One Free account per inbox, where the copy has public sign-up: it outlives the account on purpose, like trial claims.
   "signup_claims",
   // The marketing site's beta waitlist (src/db/schema/site.ts): nobody on it has a workspace yet.
   "waitlist",

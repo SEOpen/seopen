@@ -45,16 +45,6 @@ export function siteOrigin(): string {
 }
 
 /**
- * The beta waitlist the auth pages point to while sign-up is closed: the form on the hosted service's
- * home page. Null on a copy without the marketing site, or at any other address.
- */
-export function waitlistHref(): string | null {
-  if (!siteLinks()) return null;
-  const host = process.env.SEOPEN_SITE_HOST?.trim().toLowerCase();
-  return !host || host === "getseopen.com" ? `${siteHref("/")}#waitlist` : null;
-}
-
-/**
  * Whether this copy has the marketing site to link to: home, privacy, terms and the waitlist. A
  * self-hosted copy has none of those pages (next.config.ts sets SEOPEN_HAS_SITE at build time).
  */

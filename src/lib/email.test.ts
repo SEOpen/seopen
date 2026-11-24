@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { inboxTakenMessage, sendEmail, welcomeMessage } from "./email";
+import { adminInviteMessage, resetPasswordMessage, sendEmail } from "./email";
 
 /** Resend is mocked, so nothing here sends real email. */
 const resend = vi.hoisted(() => ({ calls: [] as unknown[][], error: null as { message: string } | null }));
@@ -45,10 +45,10 @@ describe("sendEmail", () => {
   it("a retry after a throw sends the same key again", async () => {
     vi.stubEnv("RESEND_API_KEY", "re_test");
     resend.error = { message: "timed out" };
-    await expect(sendEmail(msg, { idempotencyKey: "welcome-email/u1" })).rejects.toThrow("Resend rejected the message: timed out");
+    await expect(sendEmail(msg, { idempotencyKey: "recap/u1" })).rejects.toThrow("Resend rejected the message: timed out");
     resend.error = null;
-    await sendEmail(msg, { idempotencyKey: "welcome-email/u1" });
-    expect(resend.calls.map((c) => c[1])).toEqual([{ idempotencyKey: "welcome-email/u1" }, { idempotencyKey: "welcome-email/u1" }]);
+    await sendEmail(msg, { idempotencyKey: "recap/u1" });
+    expect(resend.calls.map((c) => c[1])).toEqual([{ idempotencyKey: "recap/u1" }, { idempotencyKey: "recap/u1" }]);
   });
 
   it("without a key, prints the message in dev but refuses in any production build", async () => {
@@ -70,7 +70,7 @@ describe("links and addresses", () => {
   it("follow the instance's site host and contact address", () => {
     vi.stubEnv("SEOPEN_SITE_HOST", "seo.example.org");
     vi.stubEnv("NEXT_PUBLIC_SEOPEN_CONTACT_EMAIL", "help@example.org");
-    const m = welcomeMessage("https://seo.example.org/projects/new");
+    const m = resetPasswordMessage("https://seo.example.org/reset");
     expect(m.html).toContain("https://seo.example.org/email/seopen-lockup-on-light.png");
     expect(m.text).toContain("SEOpen: https://seo.example.org");
     expect(m.html).toContain("help@example.org");
@@ -78,60 +78,11 @@ describe("links and addresses", () => {
   });
 });
 
-describe("the inbox-taken email", () => {
-  it("explains the rule, never names another address, and gives a date only after a delete", () => {
-    const taken = inboxTakenMessage({ signInUrl: "https://app.example.com/sign-in" });
-    const wait = inboxTakenMessage({ signInUrl: "https://app.example.com/sign-in", until: "Nov 14, 2026" });
-    for (const m of [taken, wait]) {
-      expect(m.text).toContain("with or without dots");
-      expect(m.text).toContain("https://app.example.com/sign-in");
-      expect(m.html).toContain("https://app.example.com/sign-in");
-      expect(m.text).not.toMatch(/@|—/);
-    }
-    expect(taken.subject).toBe("You already have a SEOpen account");
-    expect(wait.text).toContain("from Nov 14, 2026");
-  });
-});
-
-describe("lifecycle email copy", () => {
+describe("account email copy", () => {
   it("never names dollars, the data provider or a job, and has no em dash", () => {
-    const m = welcomeMessage("https://app.example.com/projects/new");
-    for (const copy of [m.subject, m.text]) {
-      expect(copy).not.toMatch(/\$|dollar|dataforseo|\bjobs?\b|—/i);
+    for (const m of [resetPasswordMessage("https://app.example.com/reset"), adminInviteMessage("https://app.example.com/reset")]) {
+      for (const copy of [m.subject, m.text]) expect(copy).not.toMatch(/\$|dollar|dataforseo|\bjobs?\b|—/i);
     }
-  });
-});
-
-describe("welcome email", () => {
-  const NEW = "https://app.example.com/projects/new";
-  // Built per test, after the contact address is stubbed.
-  let m: ReturnType<typeof welcomeMessage>;
-  beforeEach(() => {
-    m = welcomeMessage(NEW);
-  });
-  const order = (copy: string, words: string[]) => {
-    const at = words.map((w) => copy.indexOf(w));
-    for (const i of at) expect(i).toBeGreaterThan(-1);
-    expect(at).toEqual([...at].sort((a, b) => a - b));
-  };
-
-  // The first-run path every plan has, Free included: audit, the fix list, then an agent to work through it.
-  it("walks through the audit, the fix list and connecting an agent, in that order", () => {
-    for (const copy of [m.text, m.html]) order(copy, ["site audit", "Fixes", "MCP page"]);
-  });
-
-  it("leads with nothing Free doesn't have", () => {
-    expect(m.text).not.toMatch(/rank|competitor|keyword|AI visibility|backlink/i);
-  });
-
-  it("keeps the button to add a site, the reason it was sent and the contact line", () => {
-    for (const copy of [m.text, m.html]) {
-      expect(copy).toContain(NEW);
-      expect(copy).toContain("You're getting this once, because you opened a SEOpen account.");
-    }
-    expect(m.html).toContain(">Add your site</a>");
-    expect(m.html).toContain("hello@getseopen.com");
-    expect(m.subject).toBe("Welcome to SEOpen");
   });
 });
 
@@ -140,7 +91,7 @@ describe("the postal address footer", () => {
 
   it("puts SEOPEN_POSTAL_ADDRESS in every email, in both parts", () => {
     vi.stubEnv("SEOPEN_POSTAL_ADDRESS", "Fernhill Garden Co., 1 Example St, Springfield");
-    for (const m of [welcomeMessage("https://app.example.com/projects/new"), inboxTakenMessage({ signInUrl: "https://app.example.com/sign-in" })]) {
+    for (const m of [resetPasswordMessage("https://app.example.com/reset"), adminInviteMessage("https://app.example.com/reset")]) {
       expect(m.html).toContain("<br>Fernhill Garden Co., 1 Example St, Springfield</p>");
       expect(m.text.endsWith("\nFernhill Garden Co., 1 Example St, Springfield")).toBe(true);
     }
@@ -148,7 +99,7 @@ describe("the postal address footer", () => {
 
   it("leaves the address line out when none is set", () => {
     vi.stubEnv("SEOPEN_POSTAL_ADDRESS", "");
-    const m = welcomeMessage("https://app.example.com/projects/new");
+    const m = resetPasswordMessage("https://app.example.com/reset");
     expect(m.text.endsWith("SEOpen: https://getseopen.com")).toBe(true);
     expect(m.html).toContain("write to hello@getseopen.com.</p>");
   });
@@ -176,9 +127,9 @@ describe("a copy with no contact address", () => {
   });
 
   it("names no address in the footer or the copy, and never SEOpen's own", () => {
-    const welcome = welcomeMessage("https://app.example.com/projects/new");
-    expect(welcome.html).toContain("Questions? Reply to this email.</p>");
-    for (const copy of [welcome.text, welcome.html]) expect(copy).not.toContain("getseopen.com>");
-    expect(welcome.html).not.toContain("hello@getseopen.com");
+    const reset = resetPasswordMessage("https://app.example.com/reset");
+    expect(reset.html).toContain("Questions? Reply to this email.</p>");
+    for (const copy of [reset.text, reset.html]) expect(copy).not.toContain("getseopen.com>");
+    expect(reset.html).not.toContain("hello@getseopen.com");
   });
 });

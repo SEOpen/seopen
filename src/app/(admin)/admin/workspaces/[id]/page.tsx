@@ -125,7 +125,7 @@ export default async function AdminWorkspacePage({ params }: PageProps<"/admin/w
     failedJobs(7, id),
     syncProblems(id),
     pausedJobs(id),
-    // Where the account that made the workspace first came to the site from (src/lib/first-visit.ts).
+    // Where the account that made the workspace first came to the site from, when a hosted service's sign-up recorded it.
     db
       .select({ source: users.firstSource, referrerHost: users.firstReferrerHost, landingPath: users.firstLandingPath })
       .from(workspaceMembers)
@@ -261,9 +261,11 @@ export default async function AdminWorkspacePage({ params }: PageProps<"/admin/w
           <Section title="Connections">
             <Facts items={connections} />
           </Section>
-          <Section title="First visit" description="Where the owner first came to the site from, when they signed up">
-            <Facts items={firstVisit} />
-          </Section>
+          {(owner?.source || owner?.referrerHost || owner?.landingPath) && (
+            <Section title="First visit" description="Where the owner first came to the site from, when they signed up">
+              <Facts items={firstVisit} />
+            </Section>
+          )}
         </div>
       </div>
     </>

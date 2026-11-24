@@ -148,7 +148,7 @@ To see why it's off, open `http://127.0.0.1:4100/api/auth/local-sign-in`.
 - **Email alerts** (`RESEND_API_KEY`, `EMAIL_FROM`, `OWNER_ALERT_EMAIL`): optional. An email when the spend cap nears or the DataForSEO balance runs low, instead of a line in the server log. Steps in [docs/self-hosting.md](docs/self-hosting.md#email-and-alerts).
 - **Forgotten password:** set a new one from the server with `pnpm user:password you@example.com` (`docker compose exec web pnpm user:password you@example.com` in Docker).
 
-Serving a copy to other people (a domain, email, public sign-up, alerts) takes a few more settings, all in [docs/self-hosting.md](docs/self-hosting.md).
+Serving a copy to other people (a domain, email, alerts) takes a few more settings, all in [docs/self-hosting.md](docs/self-hosting.md).
 
 ### Try it without accounts
 
@@ -165,7 +165,7 @@ DataForSEO has no switch: research, rank, audits, backlinks, Local and AI visibi
 
 Each account belongs to a workspace, which owns its projects and data. The owner workspace (number 1) has no plan limits beyond your spend caps. No-login mode signs you in as its owner. On a server, `pnpm owner:create you@example.com` makes the owner's account with a password, and `pnpm user:password you@example.com` gives an existing one a password.
 
-`pnpm owner:create someone@example.com --no-password --customer` gives a second person a workspace of their own. They set a password through "Forgot your password?" once email works ([docs/self-hosting.md](docs/self-hosting.md)), or you set one for them with `pnpm user:password someone@example.com`. There are no plan limits: each workspace you make runs paid checks up to `DATAFORSEO_MONTHLY_CAP_USD` a month, or its own cap from Admin → Spend, under the platform cap. An account that signs itself up, if you open sign-up, runs no paid checks.
+`pnpm owner:create someone@example.com --no-password --customer` gives a second person a workspace of their own. They set a password through "Forgot your password?" once email works ([docs/self-hosting.md](docs/self-hosting.md)), or you set one for them with `pnpm user:password someone@example.com`. There are no plan limits: each workspace you make runs paid checks up to `DATAFORSEO_MONTHLY_CAP_USD` a month, or its own cap from Admin → Spend, under the platform cap. There is no public sign-up: you make every account.
 
 ## AI agents (MCP)
 

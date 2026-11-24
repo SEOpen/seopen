@@ -2,15 +2,16 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { getRedirectUrl, getRewrittenUrl, isRewrite, unstable_getResponseFromNextConfig } from "next/experimental/testing/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { APP_PREFIXES, isAppPath, waitlistHref } from "./hosts";
+import { APP_PREFIXES, isAppPath } from "./hosts";
 
 const APP_DIR = path.join(process.cwd(), "src/app");
 
 /**
- * App prefixes whose folders only getseopen.com has (Billing, and Stripe's checkout, portal and
- * webhook routes). The public tree lacks them, and the proxy listing them there is harmless.
+ * App prefixes whose folders only getseopen.com has (Billing, Stripe's checkout, portal and webhook
+ * routes, and public sign-up's pages). The public tree lacks them, and the proxy listing them there
+ * is harmless: the page doesn't exist, so it answers 404.
  */
-const CLOUD_ONLY = ["/billing", "/api/billing", "/api/webhooks"];
+const CLOUD_ONLY = ["/billing", "/api/billing", "/api/webhooks", "/sign-up", "/set-password", "/verify-email"];
 
 /** Route folders directly under a directory: no files, no private `_folders`, no groups. None when it doesn't exist. */
 function routeFolders(dir: string): string[] {
@@ -157,32 +158,5 @@ describe("next.config.ts host rules", () => {
     expect(getRedirectUrl(await at("https://preview.seopen.example/rank", false))).toBeNull();
     expect(isRewrite(await at("https://preview.seopen.example/", false))).toBe(false);
     expect(getRedirectUrl(await at("https://preview.seopen.example/login", false))).toBe("https://preview.seopen.example/sign-in");
-  });
-});
-
-describe("waitlistHref", () => {
-  afterEach(() => vi.unstubAllEnvs());
-
-  it("is getseopen.com's home page form on the hosted service", () => {
-    vi.stubEnv("SEOPEN_HAS_SITE", "1");
-    vi.stubEnv("SEOPEN_SITE_HOST", "getseopen.com");
-    vi.stubEnv("SEOPEN_APP_HOST", "app.getseopen.com");
-    expect(waitlistHref()).toBe("https://getseopen.com/#waitlist");
-    vi.stubEnv("SEOPEN_SITE_HOST", "");
-    vi.stubEnv("SEOPEN_APP_HOST", "");
-    expect(waitlistHref()).toBe("/landing#waitlist");
-  });
-
-  it("is null on a self-hosted copy, which has no site", () => {
-    vi.stubEnv("SEOPEN_SITE_HOST", "seo.example.com");
-    vi.stubEnv("SEOPEN_APP_HOST", "");
-    expect(waitlistHref()).toBeNull();
-  });
-
-  it("is null on a copy built without the marketing site, whatever the host", () => {
-    vi.stubEnv("SEOPEN_HAS_SITE", "");
-    vi.stubEnv("SEOPEN_SITE_HOST", "");
-    vi.stubEnv("SEOPEN_APP_HOST", "");
-    expect(waitlistHref()).toBeNull();
   });
 });

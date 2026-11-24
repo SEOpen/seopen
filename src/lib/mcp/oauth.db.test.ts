@@ -15,7 +15,11 @@ import { testDb } from "@/db/test-db";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/jobs/boss", () => ({ enqueue: vi.fn(async () => "job") }));
-vi.mock("@/lib/welcome-email", () => ({ queueWelcomeEmail: async () => {} }));
+// Signing in sends nothing here, whatever sign-up the copy has.
+vi.mock("@/public-signup/server", async (original) => {
+  const m = await original<typeof import("@/public-signup/server")>();
+  return { ...m, signup: { ...m.signup, onSession: async () => undefined } };
+});
 // The metadata route waits for a request with `connection()`, which needs Next's request scope.
 vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), connection: async () => {} }));
 

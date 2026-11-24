@@ -78,10 +78,11 @@ export const trialClaims = pgTable(
 );
 
 /**
- * One Free account per inbox (src/lib/signup.ts). A self sign-up claims its normalized email when
- * it's verified, stored only as a one-way hash. Like trial claims the row has no foreign key, so it
- * outlives the account: `released_at` is when the account was deleted, and the inbox can sign up
- * again a while after that. Invited and admin-made accounts claim nothing.
+ * One Free account per inbox, where the copy has public sign-up (src/lib/public-signup/types.ts). A
+ * self sign-up claims its normalized email when it's verified, stored only as a one-way hash. Like
+ * trial claims the row has no foreign key, so it outlives the account: `released_at` is when the
+ * account was deleted, and the inbox can sign up again a while after that. Invited and admin-made
+ * accounts claim nothing.
  */
 export const signupClaims = pgTable("signup_claims", {
   hash: text().primaryKey(),

@@ -27,13 +27,15 @@ COPY . .
 ARG NEXT_PUBLIC_SEOPEN_CONTACT_EMAIL=""
 ARG NEXT_PUBLIC_POSTHOG_KEY=""
 ARG NEXT_PUBLIC_POSTHOG_HOST=""
-ARG SEOPEN_SIGNUP_OPEN=""
 # A one-host copy leaves these empty. With both hosts set, next.config.ts builds the redirects that
 # split the marketing site from the app, so they're read at build time as well as at run time.
 ARG SEOPEN_SITE_HOST=""
 ARG SEOPEN_APP_HOST=""
 # The hosted marketing site's own cookieless PostHog project; empty everywhere else.
 ARG NEXT_PUBLIC_POSTHOG_SITE_KEY=""
+# The hosted service's own public sign-up, read by its static pages. This repo has no public sign-up
+# (src/lib/public-signup/types.ts), so here it does nothing.
+ARG SEOPEN_SIGNUP_OPEN=""
 # "production" only for the hosted service's own build (src/lib/deploy-env.ts). It's in this build
 # stage alone, never the image's runtime, so the worker never inherits it.
 ARG SEOPEN_DEPLOY_ENV=""
