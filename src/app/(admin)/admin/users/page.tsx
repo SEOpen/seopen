@@ -21,7 +21,7 @@ const userId = sql.raw('"users"."id"');
 export const metadata = { title: "Users · Admin" };
 
 const COLUMNS: ColumnSpec[] = [
-  { key: "email", label: "Email" },
+  { key: "email", label: "Email", format: "link", href: "/admin/users/{id}" },
   { key: "name", label: "Name" },
   { key: "workspace", label: "Workspace", format: "link", href: "/admin/workspaces/{workspaceId}" },
   { key: "verified", label: "Verified", format: "badge" },
@@ -32,7 +32,7 @@ const COLUMNS: ColumnSpec[] = [
 
 /**
  * Every account: when it signed up, whether its email is verified, how it signs in, when it was last
- * seen (its newest session) and the workspace it belongs to. Then who can open Admin, with the form
+ * seen (its newest session) and the workspace it belongs to. An email opens the account's own page. Then who can open Admin, with the form
  * that changes it.
  */
 export default async function AdminUsersPage() {
