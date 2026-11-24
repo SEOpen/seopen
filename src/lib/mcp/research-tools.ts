@@ -28,6 +28,7 @@ import { resolveProject, ToolError } from "./data";
 import { targetUrl } from "./inspect";
 import { canResearch, type Principal } from "./keys";
 import { consumeLimit } from "./limits";
+import { plainRefusal } from "./plan-wording";
 
 /**
  * Research lookups. Each builds the same request as the app's page.
@@ -104,7 +105,8 @@ export function registerResearchTools(server: McpServer, principal: Principal, r
     const usage = await usageSummary(ws.workspaceId);
     const left = usage.creditsTotal == null ? null : Math.max(0, usage.creditsTotal - usage.creditsUsed);
     const allowed = canResearch(principal);
-    const blocked = (await spendBlock(ws.workspaceId, { research: true }))?.message;
+    const block = await spendBlock(ws.workspaceId, { research: true });
+    const blocked = block && plainRefusal(block.message);
     return {
       needs_approval: true,
       credits,
@@ -158,7 +160,7 @@ export function registerResearchTools(server: McpServer, principal: Principal, r
 
   /** Why a paid part of an answer didn't come back, in words the agent can pass on. */
   function failureMessage(e: unknown): string {
-    if (e instanceof ToolError || e instanceof BudgetExceededError) return e.message;
+    if (e instanceof ToolError || e instanceof BudgetExceededError) return plainRefusal(e.message);
     console.error("[mcp.research]", e);
     return plainNextStep(e, "That lookup didn't finish, and nothing was charged for it. Try again in a few minutes.");
   }
