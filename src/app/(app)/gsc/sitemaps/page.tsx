@@ -66,7 +66,7 @@ export default async function SitemapsPage({ searchParams }: PageProps<"/gsc/sit
       )}
       <p className="mt-4 text-sm text-muted">
         To add a sitemap, submit it in{" "}
-        <a className="text-accent underline-offset-3 hover:underline" href={`https://search.google.com/search-console/sitemaps?resource_id=${encodeURIComponent(project.gscProperty)}`}>
+        <a target="_blank" rel="noreferrer" className="text-accent underline-offset-3 hover:underline" href={`https://search.google.com/search-console/sitemaps?resource_id=${encodeURIComponent(project.gscProperty)}`}>
           Search Console
         </a>
         . SEOpen reads Search Console without write access.
