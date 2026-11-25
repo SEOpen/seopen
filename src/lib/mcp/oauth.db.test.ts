@@ -193,7 +193,9 @@ describe.skipIf(!ready)("OAuth for the MCP endpoint", () => {
 
     it("serves resource metadata for the endpoint, without DPoP, and authorization server metadata at the root", async () => {
       const resource = await (await appFetch(`${ORIGIN}/.well-known/oauth-protected-resource/api/mcp`)).json();
-      expect(resource).toMatchObject({ resource: MCP_URL, authorization_servers: [ORIGIN], scopes_supported: ["read", "write", "research"] });
+      expect(resource).toMatchObject({ resource: MCP_URL, authorization_servers: [ORIGIN] });
+      // With offline_access: ChatGPT asks for these scopes alone, and without it gets no refresh token.
+      expect(resource.scopes_supported).toEqual(["read", "write", "research", "offline_access"]);
       expect(resource).not.toHaveProperty("dpop_signing_alg_values_supported");
       const server = await (await appFetch(`${ORIGIN}/.well-known/oauth-authorization-server`)).json();
       expect(server).toMatchObject({
@@ -275,6 +277,35 @@ describe.skipIf(!ready)("OAuth for the MCP endpoint", () => {
       expect(claims).toMatchObject({ iss: ORIGIN, aud: MCP_URL, sub: A.user.id, workspace_id: A.ws.id, scope: "read offline_access" });
       expect(claims.exp - claims.iat).toBe(15 * 60);
       expect(appA.saved!.refresh_token).toBeTruthy();
+    });
+
+    it("gives a refresh token to an app that asks for exactly the listed scopes, and to one connected before without", async () => {
+      const D = await seedWorkspace("oauth-listed");
+      const provider = new MemoryProvider();
+      const connect = async (scope: string) => {
+        provider.saved = undefined;
+        expect(await sdkAuth(provider, { serverUrl: MCP_URL, fetchFn: appFetch })).toBe("REDIRECT");
+        provider.authorizationUrl!.searchParams.set("scope", scope);
+        const { consentPage, back } = await browserConsents(provider.authorizationUrl!, D, { accept: true, scope });
+        expect(await sdkAuth(provider, { serverUrl: MCP_URL, authorizationCode: back.searchParams.get("code")!, iss: back.searchParams.get("iss") ?? undefined, fetchFn: appFetch })).toBe("AUTHORIZED");
+        return consentPage;
+      };
+
+      await connect("read write research");
+      expect(provider.saved!.refresh_token).toBeUndefined();
+
+      const { scopes_supported } = await (await appFetch(`${ORIGIN}/.well-known/oauth-protected-resource/api/mcp`)).json();
+      const consentPage = await connect(scopes_supported.join(" "));
+      expect((await oauth.readConsentRequest(consentPage.searchParams))?.scopes).toContain("offline_access");
+      expect(provider.saved!.refresh_token).toBeTruthy();
+
+      const res = await appFetch(`${ORIGIN}/api/auth/oauth2/token`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: provider.saved!.refresh_token!, client_id: provider.info!.client_id, resource: MCP_URL }),
+      });
+      expect(res.status).toBe(200);
+      expect((await rpc((await res.json()).access_token)).status).toBe(200);
     });
 
     it("needs PKCE", async () => {

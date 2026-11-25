@@ -49,13 +49,17 @@ export function mcpResource(baseUrl: string): string {
  * is `/api/mcp`, not under Better Auth's base path. It leaves out `dpop_signing_alg_values_supported`
  * (which `@better-auth/mcp`'s own copy lists) because the endpoint takes bearer tokens only; without
  * it a client knows not to bind its token with DPoP.
+ *
+ * It lists `offline_access`, which the MCP spec's draft says a resource should leave to the
+ * authorization server's metadata. ChatGPT asks for exactly the scopes listed here, so without it
+ * ChatGPT gets no refresh token and has to be connected again when the access token runs out.
  */
 export function protectedResourceMetadata(baseUrl: string) {
   return {
     resource: mcpResource(baseUrl),
     authorization_servers: [oauthIssuer(baseUrl)],
     bearer_methods_supported: ["header"],
-    scopes_supported: [...MCP_SCOPES],
+    scopes_supported: [...OAUTH_SCOPES],
     resource_name: "SEOpen",
     // Public, unlike the app's /agents page, which needs a sign-in. A copy without the docs pages
     // sends /docs to the hosted docs anyway (src/lib/docs-redirects.ts).
