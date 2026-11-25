@@ -22,6 +22,7 @@ vi.mock("@/components/plan-upgrade", () => ({ UpgradeNow: () => null }));
 
 const { ResetPasswordForm } = await import("./auth/reset-password-form");
 const { ForgotPasswordForm } = await import("./auth/forgot-password-form");
+const { ChangePasswordForm } = await import("./settings/change-password-form");
 const { RenameList } = await import("@/modules/keywords/components/rename-list");
 const { AddKeywordsForm } = await import("@/modules/local/components/forms");
 
@@ -44,6 +45,8 @@ describe("errors that appear after a submit", () => {
     alertSays(renderToStaticMarkup(<ResetPasswordForm token="t" />), "That link has expired or was already used.");
     forced.state = "limited";
     alertSays(renderToStaticMarkup(<ForgotPasswordForm />), "Too many requests.");
+    forced.state = "wrong";
+    alertSays(renderToStaticMarkup(<ChangePasswordForm email="a@example.com" />), "That's not your current password.");
   });
 
   it("announce on the small forms", () => {

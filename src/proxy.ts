@@ -12,8 +12,8 @@ import { withClientIpHeader } from "@/lib/web/client-ip";
  * The sign-in gate, plus the app host's half of the host split (src/lib/hosts.ts). The site host
  * never reaches here: the matcher skips it, and next.config.ts redirects its app paths. Every
  * app page, API route and Server Action needs a Better Auth session. The proxy runs on Node, so
- * it checks the session for real; Better Auth's signed cookie cache keeps most requests off the
- * database. Better Auth is imported only when a session cookie needs checking.
+ * it checks the session for real, against its row, so a session ended anywhere is refused at once.
+ * Better Auth is imported only when a session cookie needs checking.
  */
 export async function proxy(request: NextRequest) {
   const { pathname, search, hostname } = request.nextUrl;
@@ -60,7 +60,7 @@ export async function proxy(request: NextRequest) {
     const { auth } = await import("@/lib/auth");
     const { headers, response } = await auth.api.getSession({ headers: request.headers, returnHeaders: true });
     if (response) {
-      // Pass on a refreshed cookie cache or session expiry.
+      // Pass on a refreshed session expiry.
       const res = await rememberProject(request, response.user.id);
       for (const cookie of headers.getSetCookie()) res.headers.append("set-cookie", cookie);
       return res;
@@ -107,9 +107,9 @@ function withoutCookies(request: NextRequest): NextResponse {
  * switcher would drop to the first project. The lookup only runs when the URL names a different project
  * from the cookie, so it costs one query per switch.
  *
- * Better Auth's nextCookies plugin writes a refreshed cookie cache through next/headers, and Next then
- * replaces the response's set-cookie with what that store holds. That happens on the first request after
- * the 5-minute cache runs out, so the project cookie goes in the store as well or it is lost.
+ * Better Auth's nextCookies plugin writes a refreshed session cookie through next/headers, and Next then
+ * replaces the response's set-cookie with what that store holds. That happens about once a day per
+ * session (updateAge), so the project cookie goes in the store as well or it is lost.
  */
 async function rememberProject(request: NextRequest, userId: string): Promise<NextResponse> {
   const id = projectIdFromPath(request.nextUrl.pathname);

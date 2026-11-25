@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
+import Link from "next/link";
 import { setAlertEmails, setTimeZone, setWeeklyRecap } from "@/app/actions/settings";
 import { DeleteWorkspace } from "@/components/delete-workspace";
 import { ExportWorkspace } from "@/components/export-workspace";
+import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -11,6 +13,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { isAdmin } from "@/lib/admin/access";
 import { requireSession } from "@/lib/auth/session";
+import { signInMethods } from "@/lib/auth/sign-in-methods";
 import { formatDateTime } from "@/lib/format";
 import { RECAP_AT, recapOpen } from "@/lib/recap/gate";
 import { mondayJobTime } from "@/lib/schedule";
@@ -27,6 +30,7 @@ export const metadata = { title: "Workspace settings" };
 export default async function SettingsPage() {
   const [user, workspace, timeZone] = await Promise.all([requireSession(), currentWorkspace(), currentTimeZone()]);
   const now = new Date();
+  const methods = await signInMethods(user.id);
   const me = recapOpen(workspace) ? (await db.select({ on: users.weeklyRecap, alerts: users.alertEmails }).from(users).where(eq(users.id, user.id)))[0] : undefined;
   const recap = recapOpen(workspace) ? { on: me?.on ?? false, alerts: me?.alerts ?? true, when: mondayJobTime(RECAP_AT, timeZone, now) } : null;
 
@@ -96,6 +100,27 @@ export default async function SettingsPage() {
                   {recap.alerts ? "Turn off" : "Turn on"}
                 </Button>
               </form>
+            </CardBody>
+          </Card>
+        )}
+        {methods.password && (
+          <Card>
+            <CardHeader
+              title="Your password"
+              description={`For ${user.email} only. Changing it signs you out in every other browser, revokes the API keys you made and disconnects your connected apps.`}
+            />
+            <CardBody>
+              <ChangePasswordForm email={user.email} />
+            </CardBody>
+          </Card>
+        )}
+        {!methods.password && methods.google && (
+          <Card>
+            <CardHeader title="Your password" description={`${user.email} signs in with Google and has no password.`} />
+            <CardBody>
+              <Link href="/forgot-password" className="text-sm underline hover:text-fg">
+                Email me a link to set one
+              </Link>
             </CardBody>
           </Card>
         )}

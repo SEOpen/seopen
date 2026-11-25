@@ -529,7 +529,7 @@ describe.skipIf(!ready)("OAuth for the MCP endpoint", () => {
       expect((await rpc(appA.saved!.access_token)).status).toBe(200);
     });
 
-    it("a password change revokes keys and apps only when it signs out other sessions and goes through", async () => {
+    it("a password change revokes keys and apps, only when it goes through", async () => {
       const E = await seedWorkspace("oauth-change");
       const headers = new Headers({ cookie: E.cookie });
       const app = await connectApp(E, ["read", "offline_access"]);
@@ -537,13 +537,9 @@ describe.skipIf(!ready)("OAuth for the MCP endpoint", () => {
       // A wrong current password changes nothing.
       await expect(auth.api.changePassword({ body: { currentPassword: "wrong-password", newPassword: `x-${randomUUID()}`, revokeOtherSessions: true }, headers })).rejects.toThrow();
       expect(await keys.verifyApiKey(key)).not.toBeNull();
-      // Keeping other sessions keeps agents too.
-      const kept = `k-${randomUUID()}`;
-      await auth.api.changePassword({ body: { currentPassword: PASSWORD, newPassword: kept }, headers });
-      expect(await keys.verifyApiKey(key)).not.toBeNull();
       expect((await rpc(app.saved!.access_token)).status).toBe(200);
-      // Signing out everywhere else cuts them off.
-      await auth.api.changePassword({ body: { currentPassword: kept, newPassword: `n-${randomUUID()}`, revokeOtherSessions: true }, headers });
+      // A change that asks to keep other sessions signs them out and cuts agents off all the same.
+      await auth.api.changePassword({ body: { currentPassword: PASSWORD, newPassword: `n-${randomUUID()}`, revokeOtherSessions: false }, headers });
       expect(await keys.verifyApiKey(key)).toBeNull();
       expect((await rpc(app.saved!.access_token)).status).toBe(401);
       expect(await oauth.listConnectedApps({ workspaceId: E.ws.id })).toEqual([]);

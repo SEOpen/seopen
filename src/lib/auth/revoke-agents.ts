@@ -10,8 +10,8 @@ const CODE_PREFIX = '{"type":"authorization\\_code",%';
  * connected app loses its consent, tokens and unswapped codes, as Disconnect does. Password reset
  * calls this: it is how an account is taken back, and a key or refresh token outlives the sessions
  * Better Auth signs out, so whoever held the account could keep working through them. The apps
- * themselves stay registered; connecting again asks for consent. Changing the password with
- * "sign out other sessions" calls it too (the after hook in ./index.ts).
+ * themselves stay registered; connecting again asks for consent. Changing the password calls it too
+ * (the after hook in ./index.ts).
  */
 export async function revokeAgentAccess(userId: string): Promise<{ keys: number; apps: number }> {
   return db.transaction(async (tx) => {

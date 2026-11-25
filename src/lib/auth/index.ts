@@ -96,6 +96,8 @@ export const auth = betterAuth({
       "/sign-up/email": { window: 10 * 60, max: 3 },
       "/request-password-reset": { window: 10 * 60, max: 3 },
       "/send-verification-email": { window: 10 * 60, max: 3 },
+      // It checks the current password, so it's a place to guess one.
+      "/change-password": { window: 10 * 60, max: 5 },
       // Anyone may register an app. Loose enough for a connector service registering from shared
       // addresses, tight enough that a script can't fill the table quickly; the daily `mcp.prune`
       // job deletes apps 90 days old that have no consent (src/lib/auth/retention.ts).
@@ -147,23 +149,28 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 30,
     updateAge: 60 * 60 * 24,
-    // Signed session copy in a cookie, so proxy.ts can check most requests without the database.
-    cookieCache: { enabled: true, maxAge: 5 * 60 },
+    // No cookieCache: a signed copy of the session in a cookie goes on working until it runs out,
+    // whatever happened to the row, so a password reset or a sign-out would leave the other browser
+    // in, with time to make an API key or connect an app that outlives it. Every check reads the row.
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      // Whatever the request asked for: a new password always signs out every other session.
+      if (ctx.path === "/change-password") return { context: { body: { ...ctx.body, revokeOtherSessions: true } } };
       if (ctx.path !== "/sign-up/email") return;
       const body = await signup.beforeEmailSignUp(ctx.body);
       if (body) return { context: { body } };
     }),
-    // Changing the password while signing out every other session is the other way an account is
-    // taken back, so it cuts off MCP keys and connected apps too, as a reset does (onPasswordReset).
+    // Changing the password is the other way an account is taken back, so it cuts off MCP keys,
+    // connected apps and unused reset links too, as a reset does (onPasswordReset).
     // Only after the change went through: a wrong current password changes nothing.
     after: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== "/change-password" || ctx.body?.revokeOtherSessions !== true) return;
+      if (ctx.path !== "/change-password") return;
       if (ctx.context.returned instanceof APIError) return;
       const userId = ctx.context.session?.user.id;
-      if (userId) await revokeAgentAccess(userId);
+      if (!userId) return;
+      await revokeAgentAccess(userId);
+      await revokeResetLinks(userId);
     }),
   },
   databaseHooks: {
