@@ -2,7 +2,8 @@
  * Sets a new password for an existing account, from the server, for a copy that can't send email.
  * "Forgot your password?" needs RESEND_API_KEY; without it the operator runs this instead. The
  * password is typed here, hidden, and never leaves this terminal. It signs the account out
- * everywhere and voids any reset links it had.
+ * everywhere, revokes its API keys, disconnects its connected apps and voids any reset links it
+ * had, as a reset does: whoever held the account could keep working through any of them.
  *
  *   pnpm user:password you@example.com
  *   docker compose exec web pnpm user:password you@example.com
@@ -11,6 +12,7 @@ import { createInterface } from "node:readline";
 import { Writable } from "node:stream";
 import { auth } from "@/lib/auth";
 import { revokeResetLinks } from "@/lib/auth/reset-links";
+import { revokeAgentAccess } from "@/lib/auth/revoke-agents";
 
 const email = process.argv.slice(2).find((a) => !a.startsWith("--"))?.trim().toLowerCase();
 
@@ -52,8 +54,9 @@ async function main() {
   if (credential) await ctx.internalAdapter.updateAccount(credential.id, { password: hash });
   else await ctx.internalAdapter.linkAccount({ userId, providerId: "credential", accountId: userId, password: hash });
   await ctx.internalAdapter.deleteUserSessions(userId);
+  const { keys, apps } = await revokeAgentAccess(userId);
   await revokeResetLinks(userId);
-  console.log(`Set a new password for ${email} and signed it out everywhere. Sign in at ${auth.options.baseURL}/sign-in`);
+  console.log(`Set a new password for ${email} and signed it out everywhere. API keys revoked: ${keys}. Connected apps disconnected: ${apps}. Sign in at ${auth.options.baseURL}/sign-in`);
 }
 
 main()

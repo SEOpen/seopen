@@ -146,7 +146,7 @@ To see why it's off, open `http://127.0.0.1:4100/api/auth/local-sign-in`.
 - **Analytics sources:** PostHog, Plausible and Umami each connect from a project's Analytics page. See [docs/posthog.md](docs/posthog.md), [docs/plausible.md](docs/plausible.md) and [docs/umami.md](docs/umami.md).
 - **Claude** (`ANTHROPIC_API_KEY`): optional, for guided setup's review. Its calls count against your spend cap.
 - **Email alerts** (`RESEND_API_KEY`, `EMAIL_FROM`, `OWNER_ALERT_EMAIL`): optional. An email when the spend cap nears or the DataForSEO balance runs low, instead of a line in the server log. Steps in [docs/self-hosting.md](docs/self-hosting.md#email-and-alerts).
-- **Forgotten password:** set a new one from the server with `pnpm user:password you@example.com` (`docker compose exec web pnpm user:password you@example.com` in Docker).
+- **Forgotten password:** set a new one from the server with `pnpm user:password you@example.com` (`docker compose exec web pnpm user:password you@example.com` in Docker). It signs the account out everywhere, revokes its API keys and disconnects its connected apps.
 
 Serving a copy to other people (a domain, email, alerts) takes a few more settings, all in [docs/self-hosting.md](docs/self-hosting.md).
 

@@ -16,7 +16,8 @@ signed in as the owner. On a server, turn it off and use passwords:
 1. Remove `SEOPEN_NO_LOGIN` from the env file, or set it to anything but `1`.
 2. Give the owner a password. If no-login mode made the account, its email is
    `owner@seopen.localhost`, and `pnpm user:password owner@seopen.localhost` sets one (`docker compose exec web pnpm user:password
-   owner@seopen.localhost` in Docker). Or make an account with your own email first:
+   owner@seopen.localhost` in Docker). It also signs the account out, revokes its API keys and disconnects
+   its connected apps, so make or connect those again after. Or make an account with your own email first:
    `pnpm owner:create you@example.com`.
 3. Restart the app so it reads the new setting (in Docker, `docker compose up -d`; `docker compose restart` keeps
    the old one), then open it from another device and check it asks for a password.
