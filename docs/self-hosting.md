@@ -20,31 +20,26 @@ signed in as the owner. On a server, turn it off and use passwords:
    its connected apps, so make or connect those again after. Or make an account with your own email first:
    `pnpm owner:create you@example.com`.
 3. Restart the app so it reads the new setting (in Docker, `docker compose up -d`; `docker compose restart` keeps
-   the old one), then open it from another device and check it asks for a password.
+   the old one), then open `/api/auth/local-sign-in`: it should say `SEOPEN_NO_LOGIN isn't set to 1`.
 
-No-login mode also turns itself off, request by request, whenever a request doesn't look like it
-came from the machine the app runs on (`src/lib/auth/no-login.ts`):
+**Use no-login mode only while the app's port is bound to `127.0.0.1`.** That's how compose,
+`pnpm dev` and `pnpm start` run it. The mode can't tell whether other machines can reach the port, so
+don't rely on it to notice, whatever Docker or operating system you run. Before you publish the port
+wider, on your own network included, or put a reverse proxy or tunnel in front of it, remove the flag
+and set a password. Anyone who can reach a copy with the mode on may get in as its owner.
+
+The mode does check each request, and asks for a password when one doesn't look local
+(`src/lib/auth/no-login.ts`). It's off when:
 
 - `SEOPEN_NO_LOGIN` isn't exactly `1`
 - `BETTER_AUTH_URL` is set to an address other than `127.0.0.1` or `localhost`, or
   `SEOPEN_SITE_HOST` or `SEOPEN_TRUST_PROXY` is set
 - the page was opened at any address other than `127.0.0.1` or `localhost`, even a domain that
   points at this machine
-- the visitor's address isn't this machine. In Docker, a browser on the host arrives from the
-  container's gateway, which counts as this machine; nothing else does.
-- the request carries a `Forwarded` or `CloudFront-Viewer-Address` header, or an `X-Forwarded-For`
-  or `X-Real-IP` address that isn't this machine (or, in Docker, the container's gateway)
+- the request doesn't look like it came straight from this machine
 
-In Docker Desktop for Mac (tested on 29.9.3), compose's default `127.0.0.1:4100` mapping keeps no-login
-working. If you publish the web port beyond `127.0.0.1`, such as `0.0.0.0:4100`, Docker Desktop shows every
-connection, the host's own included, from another address, so no-login turns itself off and the copy needs a
-password: `docker compose exec web pnpm user:password owner@seopen.localhost`. Publishing the port beyond
-`127.0.0.1` on Linux Docker Engine is untested, so don't rely on no-login there; set a password.
-
-These checks are a safety net, not a security boundary. A reverse proxy set up to pass requests
-on with `Host: 127.0.0.1` and no forwarding headers looks just like a local browser. Don't rely on
-them: on a server, remove the flag. To see why the mode is off for you, open
-`/api/auth/local-sign-in` in the browser: it names the check that failed.
+Only the settings always turn it off. The last two checks catch honest mistakes and aren't a security boundary.
+To see why the mode is off for you, open `/api/auth/local-sign-in` in the browser: it names the check that failed.
 
 ## On a domain
 

@@ -128,10 +128,9 @@ The worker makes real paid calls on its schedules, so stop it when you're not us
 
 **On your own machine there's no login.** `.env.example` sets `SEOPEN_NO_LOGIN=1`, and the app opens signed in as its owner. It makes that account the first time, with no password.
 
-No-login mode switches itself off for anything that looks like a server, and the app asks for a password again:
-- the page was opened at any address other than `127.0.0.1` or `localhost`
-- the request came from another machine or through a proxy
-- a public address or a proxy is set (`BETTER_AUTH_URL`, `SEOPEN_SITE_HOST`, `SEOPEN_TRUST_PROXY`)
+Use it only on a port bound to this machine, as compose and `pnpm dev` set it up. It asks for a password again when a request doesn't look local, but it can't tell whether other machines can reach the port, so don't rely on it to notice. Use passwords on any copy that can be reached from elsewhere, your own network included. These settings always turn it off:
+- `SEOPEN_NO_LOGIN` removed, or set to anything but `1`
+- a public address or a proxy set (`BETTER_AUTH_URL`, `SEOPEN_SITE_HOST`, `SEOPEN_TRUST_PROXY`)
 
 To see why it's off, open `http://127.0.0.1:4100/api/auth/local-sign-in`.
 
