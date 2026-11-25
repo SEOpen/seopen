@@ -17,8 +17,8 @@ import { consumeLimit } from "./limits";
  */
 
 const READ_ONLY: ToolAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-/** A record of work: it changes nothing on the customer's site. */
-const RECORDS: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+/** A record of work: it reads the live page as the before, and changes nothing on the customer's site. */
+const RECORDS: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 /** Fetches the live page and asks Google, and notes what it saw. */
 const CHECKS: ToolAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 
@@ -170,7 +170,7 @@ export function registerFixTools(server: McpServer, principal: Principal, run: R
       title: "Dismiss fixes",
       description: `Takes fixes off the list because they're not worth doing or are that way on purpose, such as a page meant to stay out of Google. Later audits leave them alone, and they can be reopened in SEOpen. Up to ${MAX_APPLY} at once. Without confirm: true it changes nothing and says what it would do. Dismissing is the user's decision.`,
       inputSchema: z.object({ project, ids: ids(MAX_APPLY), reason: z.string().max(300).optional(), confirm }),
-      annotations: { ...RECORDS, destructiveHint: true },
+      annotations: { ...RECORDS, destructiveHint: true, openWorldHint: false },
     },
     (args) =>
       run("dismiss_fix", async () => {
