@@ -30,6 +30,7 @@ import { revokeAgentAccess } from "./revoke-agents";
 import { noLoginPlugin } from "./no-login-plugin";
 import { OAUTH_DISABLED_PATHS, oauthPlugins } from "./oauth";
 import { sendAfterResponse } from "./send-after";
+import { signOutElsewherePlugin } from "./sign-out-elsewhere-plugin";
 
 export const googleLoginConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
@@ -189,7 +190,7 @@ export const auth = betterAuth({
     },
   },
   // nextCookies stays last: it reads the cookies the other plugins' hooks set.
-  plugins: [...oauthPlugins(authBaseUrl()), noLoginPlugin(), nextCookies()],
+  plugins: [...oauthPlugins(authBaseUrl()), noLoginPlugin(), signOutElsewherePlugin(), nextCookies()],
 });
 
 export type AuthSession = typeof auth.$Infer.Session;

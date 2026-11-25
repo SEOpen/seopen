@@ -4,6 +4,7 @@ import { setAlertEmails, setTimeZone, setWeeklyRecap } from "@/app/actions/setti
 import { DeleteWorkspace } from "@/components/delete-workspace";
 import { ExportWorkspace } from "@/components/export-workspace";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
+import { SignOutElsewhereForm } from "@/components/settings/sign-out-elsewhere-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -121,6 +122,17 @@ export default async function SettingsPage() {
               <Link href="/forgot-password" className="text-sm underline hover:text-fg">
                 Email me a link to set one
               </Link>
+            </CardBody>
+          </Card>
+        )}
+        {(methods.password || methods.google) && (
+          <Card>
+            <CardHeader
+              title="Sign out everywhere else"
+              description={`Signs ${user.email} out in every browser but this one.${methods.google ? " If someone may have got into your Google account, secure it first, or they can sign back in." : ""}${methods.password ? " If someone else may know your password, change it above instead, which does this too." : ""}`}
+            />
+            <CardBody>
+              <SignOutElsewhereForm />
             </CardBody>
           </Card>
         )}

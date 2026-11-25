@@ -23,6 +23,7 @@ vi.mock("@/components/plan-upgrade", () => ({ UpgradeNow: () => null }));
 const { ResetPasswordForm } = await import("./auth/reset-password-form");
 const { ForgotPasswordForm } = await import("./auth/forgot-password-form");
 const { ChangePasswordForm } = await import("./settings/change-password-form");
+const { SignOutElsewhereForm } = await import("./settings/sign-out-elsewhere-form");
 const { RenameList } = await import("@/modules/keywords/components/rename-list");
 const { AddKeywordsForm } = await import("@/modules/local/components/forms");
 
@@ -51,6 +52,7 @@ describe("errors that appear after a submit", () => {
 
   it("announce on the small forms", () => {
     alertSays(renderToStaticMarkup(<RenameList listId={1} name="A list" />), "Nope.");
+    alertSays(renderToStaticMarkup(<SignOutElsewhereForm />), "Nope.");
     alertSays(renderToStaticMarkup(<AddKeywordsForm projectId={1} businessId={1} />), "Nope.");
   });
 

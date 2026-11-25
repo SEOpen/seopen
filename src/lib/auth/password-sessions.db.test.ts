@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { makeSignature } from "better-auth/crypto";
 import { and, eq, like } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
@@ -181,6 +182,91 @@ describe.skipIf(!ready)("a new password signs out every other browser", () => {
     expect((await post("/sign-out", a, {})).status).toBe(200);
     await expectSignedOut(a);
     expect(await signedIn(b)).toBe(true);
+  });
+});
+
+describe.skipIf(!ready)("sign out everywhere else", () => {
+  const signOutElsewhere = (cookie: string, body: unknown = { agents: true }) => post("/sign-out-elsewhere", cookie, body);
+
+  /** An account that signs in with Google only, with browsers signed in to it. */
+  async function googleAccount(browsers: number) {
+    const { user, ws } = await account();
+    await db.delete(s.accounts).where(eq(s.accounts.userId, user.id));
+    const ctx = await auth.$context;
+    await ctx.internalAdapter.linkAccount({ userId: user.id, providerId: "google", accountId: randomUUID() });
+    const made = await Promise.all(Array.from({ length: browsers }, () => ctx.internalAdapter.createSession(user.id)));
+    const name = ctx.authCookies.sessionToken.name;
+    const cookies = await Promise.all(made.map(async ({ token }) => `${name}=${encodeURIComponent(`${token}.${await makeSignature(token, ctx.secret)}`)}`));
+    return { user, ws, cookies };
+  }
+
+  it("ends every other session of a Google-only account, and keeps this one under a new token", async () => {
+    const { user, ws, cookies } = await googleAccount(3);
+    const [a, b, c] = cookies;
+    for (const cookie of cookies) expect(await signedIn(cookie)).toBe(true);
+    const before = await auth.api.getSession({ headers: new Headers({ cookie: a }) });
+    const { key } = await keys.createApiKey({ workspaceId: ws.id, userId: user.id }, { name: "held by someone else" });
+
+    const res = await signOutElsewhere(a);
+    expect(res.status).toBe(200);
+
+    await expectSignedOut(b);
+    await expectSignedOut(c);
+    // A copy of this browser's own cookie, as a thief would hold, is as dead as the others.
+    await expectSignedOut(a);
+    const after = await auth.api.getSession({ headers: new Headers({ cookie: keep(res, a) }) });
+    expect(after?.session.id).toBe(before!.session.id);
+    expect(after?.session.createdAt).toEqual(before!.session.createdAt);
+    expect(after?.session.expiresAt).toEqual(before!.session.expiresAt);
+    expect(await db.$count(s.sessions, eq(s.sessions.userId, user.id))).toBe(1);
+    expect(await keys.verifyApiKey(key)).toBeNull();
+  });
+
+  it("leaves keys and apps when they're not asked for, and other accounts either way", async () => {
+    const [{ user, ws }, other] = [await account(), await account()];
+    const [a, b, theirs] = [await browser(user.email), await browser(user.email), await browser(other.user.email)];
+    const { key } = await keys.createApiKey({ workspaceId: ws.id, userId: user.id }, { name: "mine" });
+    const { key: othersKey } = await keys.createApiKey({ workspaceId: other.ws.id, userId: other.user.id }, { name: "theirs" });
+
+    const res = await signOutElsewhere(a, { agents: false });
+    expect(res.status).toBe(200);
+    await expectSignedOut(b);
+    expect(await keys.verifyApiKey(key)).not.toBeNull();
+
+    expect((await signOutElsewhere(keep(res, a))).status).toBe(200);
+    expect(await keys.verifyApiKey(key)).toBeNull();
+    expect(await signedIn(theirs)).toBe(true);
+    expect(await keys.verifyApiKey(othersKey)).not.toBeNull();
+  });
+
+  it("ends more than a hundred sessions", async () => {
+    const { user, cookies } = await googleAccount(130);
+    expect((await signOutElsewhere(cookies[0])).status).toBe(200);
+    expect(await db.$count(s.sessions, eq(s.sessions.userId, user.id))).toBe(1);
+    await expectSignedOut(cookies[129]);
+  });
+
+  it("does nothing for a browser that isn't signed in, another site, or a request that doesn't say", async () => {
+    const { user } = await account();
+    const [a, b] = [await browser(user.email), await browser(user.email)];
+    expect((await post("/sign-out", b, {})).status).toBe(200);
+    expect((await signOutElsewhere(b)).status).toBe(401);
+    expect((await signOutElsewhere("")).status).toBe(401);
+    expect((await signOutElsewhere(a, {})).status).toBe(400);
+    // Better Auth checks the origin everywhere but under test, so this turns the check back on.
+    const ctx = await auth.$context;
+    ctx.skipOriginCheck = false;
+    try {
+      const elsewhere = await auth.handler(
+        new Request(`${ORIGIN}/api/auth/sign-out-elsewhere`, { method: "POST", headers: { cookie: a, origin: "https://evil.example", "content-type": "application/json" }, body: JSON.stringify({ agents: true }) }),
+      );
+      expect(elsewhere.status).toBe(403);
+    } finally {
+      ctx.skipOriginCheck = true;
+    }
+    const get = await auth.handler(new Request(`${ORIGIN}/api/auth/sign-out-elsewhere`, { headers: { cookie: a } }));
+    expect(get.status).toBe(404);
+    expect(await signedIn(a)).toBe(true);
   });
 });
 

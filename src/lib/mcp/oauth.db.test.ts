@@ -545,6 +545,38 @@ describe.skipIf(!ready)("OAuth for the MCP endpoint", () => {
       expect(await oauth.listConnectedApps({ workspaceId: E.ws.id })).toEqual([]);
     });
 
+    it("signing out everywhere else leaves an app a signed-out browser connected, unless asked to cut agents off", async () => {
+      const F = await seedWorkspace("oauth-elsewhere");
+      const app = await connectApp(F, ["read", "offline_access"]);
+      const refresh = () =>
+        auth.handler(
+          new Request(`${ORIGIN}/api/auth/oauth2/token`, {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: app.saved!.refresh_token!, client_id: app.info!.client_id }),
+          }),
+        );
+      // Another browser signs out the one the app was connected from.
+      const signOutElsewhere = async (agents: boolean) => {
+        const signIn = await auth.api.signInEmail({ body: { email: F.user.email, password: PASSWORD }, asResponse: true });
+        const cookie = signIn.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+        const res = await auth.handler(new Request(`${ORIGIN}/api/auth/sign-out-elsewhere`, { method: "POST", headers: { cookie, origin: ORIGIN, "content-type": "application/json" }, body: JSON.stringify({ agents }) }));
+        expect(res.status).toBe(200);
+      };
+
+      await signOutElsewhere(false);
+      expect(await auth.api.getSession({ headers: new Headers({ cookie: F.cookie }) })).toBeNull();
+      expect((await rpc(app.saved!.access_token)).status).toBe(200);
+      const refreshed = await refresh();
+      expect(refreshed.status).toBe(200);
+      app.saved = (await refreshed.json()) as StoredOAuthTokens;
+      expect((await rpc(app.saved.access_token)).status).toBe(200);
+
+      await signOutElsewhere(true);
+      expect((await rpc(app.saved.access_token)).status).toBe(401);
+      expect((await refresh()).status).toBe(400);
+    });
+
     it("a token from before a Disconnect stays refused after the same app connects again", async () => {
       const C = await seedWorkspace("oauth-r");
       const first = await connectApp(C, ["read"]);
