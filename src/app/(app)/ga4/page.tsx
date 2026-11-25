@@ -35,8 +35,9 @@ export const metadata = { title: "Analytics" };
 
 const HELP = docsHelpHref("/ga4");
 
-/** A project reading from GA4 stops updating when Google refuses SEOpen's access, so that's said before the numbers. */
+/** A project reading from GA4 stops updating when Google is disconnected or refuses SEOpen's access, so that's said before the numbers. */
 function GoogleNotice({ connection }: { connection: Connection }) {
+  if (connection.state === "not_connected") return <DisconnectedNotice name="Google" href="/api/google/connect" link="Connect Search Console and Analytics" />;
   if (connection.state !== "reauth") return null;
   return (
     <div className="mb-4">
@@ -44,6 +45,20 @@ function GoogleNotice({ connection }: { connection: Connection }) {
         Google stopped accepting SEOpen&apos;s access for {connection.account.email}, so GA4 syncs are paused.{" "}
         <a href="/api/google/connect" className="text-accent hover:underline">
           Reconnect
+        </a>
+      </Callout>
+    </div>
+  );
+}
+
+/** Saved numbers stay on the page after a disconnect, so it says they've stopped. */
+function DisconnectedNotice({ name, href, link }: { name: string; href: string; link: string }) {
+  return (
+    <div className="mb-4">
+      <Callout tone="warn" title={`${name} is disconnected`}>
+        Nothing new syncs, and any numbers here were saved before. Stop using it in Sync below to delete them, or connect again:{" "}
+        <a href={href} className="text-accent hover:underline">
+          {link}
         </a>
       </Callout>
     </div>
@@ -65,6 +80,7 @@ export default async function Ga4Page({ searchParams }: PageProps<"/ga4">) {
   const onPosthog = !!project.posthogProject;
   const onPlausible = !!project.plausibleSite;
   const onUmami = !!project.umamiSite;
+  const onGa4 = !!project.ga4Property && !onPosthog && !onPlausible && !onUmami;
   const posthogNotices = <PosthogNotices project={project} connection={posthog} sp={sp} />;
   const posthogPanel = <PosthogPanel project={project} connection={posthog} />;
   const plausibleNotices = canUsePlausible && <PlausibleNotices project={project} connection={plausible} />;
@@ -72,6 +88,7 @@ export default async function Ga4Page({ searchParams }: PageProps<"/ga4">) {
   const plausiblePanel = canUsePlausible ? <PlausiblePanel project={project} connection={plausible} /> : onPlausible && <PlausibleStop project={project} />;
   const umamiNotices = canUseUmami && <UmamiNotices project={project} connection={umami} />;
   const umamiPanel = canUseUmami ? <UmamiPanel project={project} connection={umami} /> : onUmami && <UmamiStop project={project} />;
+  const googlePanel = onGa4 && <ConnectionPanel connection={connection} sp={sp} />;
   // The sources this workspace is offered: Plausible and Umami only where they're open.
   const offered = ["GA4", "PostHog", ...(canUsePlausible ? ["Plausible"] : []), ...(canUseUmami ? ["Umami"] : [])];
   const offeredList = offered.length > 2 ? `${offered.slice(0, -1).join(", ")} or ${offered.at(-1)}` : offered.join(" or ");
@@ -85,7 +102,8 @@ export default async function Ga4Page({ searchParams }: PageProps<"/ga4">) {
         {plausibleNotices}
         {umamiNotices}
         <div className="flex flex-col gap-6">
-          {isUsable(connection) ? <PropertyMapping currentProjectId={project.id} /> : <ConnectionPanel connection={connection} sp={sp} />}
+          <ConnectionPanel connection={connection} sp={sp} />
+          {isUsable(connection) && <PropertyMapping currentProjectId={project.id} />}
           {posthogPanel}
           {plausiblePanel}
           {umamiPanel}
@@ -99,7 +117,8 @@ export default async function Ga4Page({ searchParams }: PageProps<"/ga4">) {
   const sourceName = onUmami ? "Umami" : onPlausible ? "Plausible" : onPosthog ? "PostHog" : "GA4";
   const notices = (
     <>
-      {!onPosthog && !onPlausible && !onUmami && <GoogleNotice connection={connection} />}
+      {onGa4 && <GoogleNotice connection={connection} />}
+      {onPosthog && (posthog.state === "not_connected" || posthog.state === "not_configured") && <DisconnectedNotice name="PostHog" href="#posthog" link="Connect PostHog" />}
       {posthogNotices}
       {plausibleNotices}
       {umamiNotices}
@@ -117,6 +136,7 @@ export default async function Ga4Page({ searchParams }: PageProps<"/ga4">) {
         />
         <Setup>
           <SyncStatus project={project} />
+          {googlePanel}
           {onPosthog && posthogPanel}
           {onPlausible && plausiblePanel}
           {onUmami && umamiPanel}
@@ -190,6 +210,7 @@ export default async function Ga4Page({ searchParams }: PageProps<"/ga4">) {
 
       <Setup>
         <SyncStatus project={project} />
+        {googlePanel}
         {posthogPanel}
         {plausiblePanel}
         {umamiPanel}

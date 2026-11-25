@@ -64,9 +64,9 @@ describe("NewProjectProperties", () => {
     expect(html).toMatch(/<option value="4f0c1e2a-0000-4000-8000-00000000abcd" selected="">Alphanote · alphanote.test<\/option>/);
   });
 
-  it("keeps the Connect Google line when Google is the only source and isn't connected", () => {
+  it("keeps the connect line, naming both, when Google is the only source and isn't connected", () => {
     const html = render({ state: "connect" }, { posthog: { state: "hidden" }, plausible: { state: "hidden" }, umami: { state: "hidden" } });
-    expect(html).toContain("Connect Google");
+    expect(html).toContain("Connect Search Console and Analytics");
     expect(html).not.toContain('name="analyticsSource"');
   });
 });

@@ -413,7 +413,7 @@ Read live when the Analytics page or MCP `get_analytics` shows it, never stored 
 4. **Errors:** `invalid_grant` on refresh means the token was revoked or expired.
    - Set `google_accounts.status = 'reauth_required'`, stop that account's sync jobs, and show a "Reconnect Google" banner.
    - Don't retry in a loop, because each re-consent mints a new token and the 100-tokens-per-client limit applies.
-5. **Disconnect:** `client.revokeToken(refresh_token)` (POST `https://oauth2.googleapis.com/revoke`), then delete the row. Revoking removes all scopes granted to the project, for every token that Google account gave it, so while another workspace uses the same Google account SEOpen skips the revoke and only deletes the row.
+5. **Disconnect:** `client.revokeToken(refresh_token)` (POST `https://oauth2.googleapis.com/revoke`), then delete the row. Revoking removes all scopes granted to the project, for every token that Google account gave it, so while another workspace uses the same Google account SEOpen skips the revoke and only deletes the row. One connection holds Search Console and GA4, so both stop. Projects keep their mapping and saved numbers; **Stop using** in the Sync card unlinks one source from one project and deletes its rows, connected or not.
 
 ### Encrypting refresh tokens (node:crypto, AES-256-GCM)
 ```ts

@@ -64,6 +64,7 @@ export async function syncNow(projectId: number) {
   refresh();
 }
 
+/** Disconnects Search Console and GA4 together: they share one connection. Mapped projects keep what's stored until they stop using it. */
 export async function disconnectGoogle() {
   await requireSession();
   const { workspaceId } = await workspaceScope();
@@ -124,6 +125,26 @@ export async function setProjectProperties(projectId: number, formData: FormData
   // A plan may count the Search Console site and GA4 property (getseopen.com: one trial each).
   await hooks.connected(scope.workspaceId, { gscProperty, ga4Property });
   await queueSync({ ...p, gscProperty, ga4Property }, changed);
+  refresh();
+}
+
+/**
+ * Unlinks one Google source from a project and deletes what it synced. Works with Google disconnected
+ * too, when the property lists can't be shown. GA4 shares its table with the other Analytics sources,
+ * so a project that has since moved to one of them keeps its rows.
+ */
+export async function stopUsingGoogle(projectId: number, source: Source): Promise<ActionResult> {
+  await requireSession();
+  const { project: p, scope } = await requireProject(projectId);
+  const which = z.enum(["gsc", "ga4"]).parse(source);
+  const refusal = await projectActionRefusal(scope);
+  if (refusal) return refusalResult(refusal);
+  if (!(which === "gsc" ? p.gscProperty : p.ga4Property)) return;
+  await db
+    .update(projects)
+    .set(which === "gsc" ? { gscProperty: null } : { ga4Property: null })
+    .where(projectRow(scope));
+  await resetGoogleData(scope, which);
   refresh();
 }
 

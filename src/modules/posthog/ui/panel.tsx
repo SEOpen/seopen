@@ -149,7 +149,7 @@ export async function PosthogPanel({ project, connection }: { project: Project; 
             <span>{connection.account.region === "eu" ? "EU Cloud" : "US Cloud"}</span>
             <span className="text-muted">since {formatDateTime(connection.account.connectedAt, timeZone)}</span>
             <form action={disconnectPosthog} className="ml-auto">
-              <ConfirmSubmit variant="danger" question="Disconnect PostHog for this workspace? Syncs stop until you reconnect." confirmLabel="Disconnect">
+              <ConfirmSubmit variant="danger" question="Disconnect PostHog for this workspace? Syncs stop until you reconnect. Numbers already saved stay until you stop using them in Sync." confirmLabel="Disconnect">
                 Disconnect
               </ConfirmSubmit>
             </form>

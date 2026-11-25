@@ -166,9 +166,9 @@ function ConnectGoogle() {
     <p className="text-xs text-muted">
       Use Search Console or Google Analytics?{" "}
       <a href="/api/google/connect" className="text-accent hover:underline">
-        Connect Google
+        Connect Search Console and Analytics
       </a>{" "}
-      first to link them here, or do it after creating the project.
+      with one Google sign-in to link them here, or do it after creating the project.
     </p>
   );
 }

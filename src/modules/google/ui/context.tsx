@@ -63,7 +63,10 @@ export async function gscPropertyContext(
       view: (
         <>
           {header}
-          <ConnectionPanel connection={connection} sp={sp} />
+          <div className="flex flex-col gap-6">
+            <ConnectionPanel connection={connection} sp={sp} />
+            {project.gscProperty && <SyncStatus project={project} />}
+          </div>
         </>
       ),
     };

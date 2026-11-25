@@ -1,3 +1,4 @@
+import { ActionForm } from "@/components/ui/action-form";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -8,17 +9,23 @@ import { isInternal } from "@/lib/billing/gates";
 import { syncErrorDetail } from "@/lib/dataforseo/failure-copy";
 import { formatDateTime, formatDateTimeZoned, formatNumber } from "@/lib/format";
 import { zonedJobTime } from "@/lib/schedule";
+import type { ActionResult } from "@/lib/action-result";
 import type { Project } from "@/lib/projects";
-import { disconnectGoogle, syncNow } from "../actions";
+import { disconnectGoogle, stopUsingGoogle, syncNow } from "../actions";
 import { fixtureMode, getAccount, missingScopes, oauthConfigured, type GoogleAccount } from "../auth";
 import { propertyName } from "../matching";
 import { projectScope } from "@/lib/workspace";
 import { currentTimeZone, currentWorkspace, workspaceScope } from "@/lib/workspace/current";
 import { getSyncState } from "../sync";
+import { setPlausibleSite } from "@/modules/plausible/actions";
 import { getPlausibleSyncState } from "@/modules/plausible/sync";
+import { getPlausibleConnection } from "@/modules/plausible/ui/panel";
+import { setUmamiSite } from "@/modules/umami/actions";
 import { getUmamiSyncState } from "@/modules/umami/sync";
-import { umamiSiteName } from "@/modules/umami/ui/panel";
+import { getUmamiConnection, umamiSiteName } from "@/modules/umami/ui/panel";
+import { setPosthogProject } from "@/modules/posthog/actions";
 import { getPosthogSyncState } from "@/modules/posthog/sync";
+import { getPosthogConnection } from "@/modules/posthog/ui/panel";
 import { daysBetween } from "../windowing";
 import { STATUS_WORDS, syncMessage, syncThrough } from "./sync-row";
 
@@ -75,12 +82,12 @@ export async function ConnectionPanel({ connection, sp }: { connection: Connecti
   return (
     <Card>
       <CardHeader
-        title="Google account"
-        description="Search Console is Google's free report of the searches that show your site and the clicks they bring. GA4 is Google Analytics. One Google connection reads both, and SEOpen can only read them, never change anything."
+        title="Google: Search Console and Analytics"
+        description="One sign-in connects both, and one Disconnect stops both. Search Console is Google's free report of the searches that show your site and the clicks they bring. GA4 is Google Analytics. SEOpen can only read them, never change anything."
         actions={
           connection.state === "not_connected" || connection.state === "reauth" ? (
             <ButtonLink href="/api/google/connect" prefetch={false} size="sm">
-              {connection.state === "reauth" ? "Reconnect Google" : "Connect Google"}
+              {connection.state === "reauth" ? "Reconnect Google" : "Connect Search Console and Analytics"}
             </ButtonLink>
           ) : null
         }
@@ -104,7 +111,7 @@ export async function ConnectionPanel({ connection, sp }: { connection: Connecti
         )}
         {connection.state === "not_connected" && (
           <>
-            <p className="text-muted">Not connected. Connect the Google account you use for Search Console or Google Analytics.</p>
+            <p className="text-muted">Not connected. Connect the Google account you use for Search Console or Google Analytics. SEOpen lists every property of either that the account can open, and syncs only the ones linked to a project.</p>
             <p className="text-muted">
               Don&apos;t have Search Console? It&apos;s free: add your site at{" "}
               <a href="https://search.google.com/search-console" target="_blank" rel="noreferrer" className="text-accent hover:underline">
@@ -128,8 +135,8 @@ export async function ConnectionPanel({ connection, sp }: { connection: Connecti
               <Badge tone="warn">Time-limited access until {formatDateTimeZoned(connection.account.refreshTokenExpiresAt, timeZone)}</Badge>
             )}
             <form action={disconnectGoogle} className="ml-auto">
-              <ConfirmSubmit variant="danger" question="Disconnect this Google account? Syncs stop until you connect again." confirmLabel="Disconnect">
-                Disconnect
+              <ConfirmSubmit variant="danger" question="Disconnect Search Console and Google Analytics for this workspace? Syncs stop until you connect again. Numbers already saved stay until you stop using them in Sync." confirmLabel="Disconnect both">
+                Disconnect both
               </ConfirmSubmit>
             </form>
           </div>
@@ -157,23 +164,47 @@ const STATUS_TONE: Record<string, "neutral" | "accent" | "good" | "warn" | "bad"
   reauth: "bad",
 };
 
-/** Sync state for both sources, with backfill progress and a "Sync now" button. */
+/** Unlinks a source from the project and deletes what it synced, whether or not its account is still connected. */
+function StopUsing({ source, project, action, field }: { source: string; project: Project; action: (formData: FormData) => Promise<ActionResult>; field?: string }) {
+  return (
+    <ActionForm action={action} align="end">
+      {field && <input type="hidden" name={field} value="" />}
+      <ConfirmSubmit variant="ghost" question={`Stop using ${source} for ${project.name}? Its saved ${source} numbers are deleted.`} confirmLabel="Stop using" aria-label={`Stop using ${source} for ${project.name}`}>
+        Stop using
+      </ConfirmSubmit>
+    </ActionForm>
+  );
+}
+
+const hasAccount = (c: { state: string }) => c.state !== "not_connected" && c.state !== "not_configured";
+
+/**
+ * Sync state for both sources, with backfill progress, a "Sync now" button and a way to stop using each.
+ * A source whose account was disconnected says so: its stored state is from before, and can still read "Up to date".
+ */
 export async function SyncStatus({ project }: { project: Project }) {
   const [timeZone, ws] = await Promise.all([currentTimeZone(), currentWorkspace()]);
   const internal = isInternal(ws);
   const scope = projectScope(project);
   // Analytics comes from GA4, PostHog, Plausible or Umami; the row shows whichever the project uses.
   const [gsc, analytics] = await Promise.all([getSyncState(scope, "gsc"), project.umamiSite ? getUmamiSyncState(scope) : project.plausibleSite ? getPlausibleSyncState(scope) : project.posthogProject ? getPosthogSyncState(scope) : getSyncState(scope, "ga4")]);
-  const umamiName = project.umamiSite ? await umamiSiteName(project) : null;
+  const [google, other, umamiName] = await Promise.all([
+    getConnection(),
+    project.umamiSite ? getUmamiConnection() : project.plausibleSite ? getPlausibleConnection() : project.posthogProject ? getPosthogConnection() : null,
+    project.umamiSite ? umamiSiteName(project) : null,
+  ]);
+  const googleOn = hasAccount(google);
+  const analyticsOn = other ? hasAccount(other) : googleOn;
+  const reconnectGoogle = { href: "/api/google/connect", label: "Reconnect Google" };
   const rows = [
-    { label: "Search Console", property: project.gscProperty, s: gsc, reconnect: { href: "/api/google/connect", label: "Reconnect Google" } },
+    { label: "Search Console", property: project.gscProperty, s: gsc, on: googleOn, reconnect: reconnectGoogle, stop: stopUsingGoogle.bind(null, project.id, "gsc") },
     project.umamiSite
-      ? { label: "Umami", property: umamiName ?? `Website ${project.umamiSite}`, s: analytics, reconnect: { href: "/ga4#umami", label: "Reconnect Umami" } }
+      ? { label: "Umami", property: umamiName ?? `Website ${project.umamiSite}`, s: analytics, on: analyticsOn, reconnect: { href: "/ga4#umami", label: "Reconnect Umami" }, stop: setUmamiSite.bind(null, project.id), field: "umamiSite" }
       : project.plausibleSite
-      ? { label: "Plausible", property: project.plausibleSite, s: analytics, reconnect: { href: "/ga4#plausible", label: "Reconnect Plausible" } }
+      ? { label: "Plausible", property: project.plausibleSite, s: analytics, on: analyticsOn, reconnect: { href: "/ga4#plausible", label: "Reconnect Plausible" }, stop: setPlausibleSite.bind(null, project.id), field: "plausibleSite" }
       : project.posthogProject
-      ? { label: "PostHog", property: `Project ${project.posthogProject}`, s: analytics, reconnect: { href: "/ga4#posthog", label: "Reconnect PostHog" } }
-      : { label: "GA4", property: project.ga4Property, s: analytics, reconnect: { href: "/api/google/connect", label: "Reconnect Google" } },
+      ? { label: "PostHog", property: `Project ${project.posthogProject}`, s: analytics, on: analyticsOn, reconnect: { href: "/ga4#posthog", label: "Reconnect PostHog" }, stop: setPosthogProject.bind(null, project.id), field: "posthogProject" }
+      : { label: "GA4", property: project.ga4Property, s: analytics, on: analyticsOn, reconnect: reconnectGoogle, stop: stopUsingGoogle.bind(null, project.id, "ga4") },
   ];
   return (
     <Card>
@@ -181,7 +212,7 @@ export async function SyncStatus({ project }: { project: Project }) {
         title="Sync"
         description={`Daily at ${zonedJobTime("07:00", timeZone)}. Re-pulls the last few days and backfills up to 16 months of history, oldest first.`}
         actions={
-          (project.gscProperty || project.ga4Property || project.posthogProject || project.plausibleSite || project.umamiSite) && (
+          rows.some((r) => r.property && r.on) && (
             <form action={syncNow.bind(null, project.id)}>
               <Button variant="secondary" size="sm" type="submit">
                 Sync now
@@ -193,19 +224,20 @@ export async function SyncStatus({ project }: { project: Project }) {
       <CardBody className="overflow-x-auto p-0">
         <table className="w-full text-sm">
           <tbody>
-            {rows.map(({ label, property, s, reconnect }) => {
-              const detail = s && syncErrorDetail(s, internal);
+            {rows.map(({ label, property, s, on, reconnect, stop, field }) => {
+              const off = !!property && !on;
+              const detail = s && !off && syncErrorDetail(s, internal);
               const total = s?.backfillStart && s.latestDate ? Math.max(daysBetween(s.backfillStart, s.latestDate), 1) : null;
               const done = s?.backfillDone ? total : s?.backfillCursor && s.backfillStart && total ? Math.max(daysBetween(s.backfillStart, s.backfillCursor), 0) : null;
               return (
                 <tr key={label} className="border-t border-line first:border-t-0">
                   <td className="px-4 py-2.5 font-medium whitespace-nowrap">{label}</td>
                   <td className="px-4 py-2.5 text-muted">{property ? propertyName(property) : "No property"}</td>
-                  <td className="px-4 py-2.5">{s ? <Badge tone={STATUS_TONE[s.status] ?? "neutral"}>{STATUS_WORDS[s.status] ?? s.status}</Badge> : <Badge>Never run</Badge>}</td>
+                  <td className="px-4 py-2.5">{off ? <Badge tone="warn">Disconnected</Badge> : s ? <Badge tone={STATUS_TONE[s.status] ?? "neutral"}>{STATUS_WORDS[s.status] ?? s.status}</Badge> : <Badge>Never run</Badge>}</td>
                   <td className="px-4 py-2.5 text-muted">
-                    {s && syncMessage(s.status, s.message)}
+                    {off ? "Nothing new syncs. The numbers saved before are kept until you stop using it." : s && syncMessage(s.status, s.message)}
                     {detail && <div className="text-bad">{detail}</div>}
-                    {s?.status === "reauth" && (
+                    {!off && s?.status === "reauth" && (
                       <a href={reconnect.href} className="block text-accent hover:underline">
                         {reconnect.label}
                       </a>
@@ -218,6 +250,7 @@ export async function SyncStatus({ project }: { project: Project }) {
                     {s?.lastSuccessAt ? `Synced ${formatDateTime(s.lastSuccessAt, timeZone)}` : ""}
                     {s?.rowsWritten ? ` · ${formatNumber(s.rowsWritten)} rows` : ""}
                   </td>
+                  <td className="px-4 py-2.5 text-right">{property && <StopUsing source={label} project={project} action={stop} field={field} />}</td>
                 </tr>
               );
             })}

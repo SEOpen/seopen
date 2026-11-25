@@ -14,7 +14,7 @@ One click. On `/ga4`, the PostHog card has **Connect PostHog US Cloud** and **EU
 - **Scoped teams:** the token response lists the projects the user granted (`scoped_teams`). When it is set, SEOpen reads only those; when empty, it lists every project the user can see.
 - **Unverified app:** PostHog shows an "unverified application" notice on the consent screen for a client it hasn't verified. Verification is a request to PostHog support.
 - **Tokens:** encrypted with `SEOPEN_SECRET_KEY` in `posthog_accounts`, one row per workspace. The access token refreshes when it has under 2 minutes left. A refused refresh, or a 401 from the API, marks the account `reauth_required`, pauses syncs and shows **Reconnect**.
-- **Disconnect** revokes both tokens at PostHog first. If PostHog can't be reached the connection stays and the page says so.
+- **Disconnect** revokes both tokens at PostHog first. If PostHog can't be reached the connection stays and the page says so. Projects keep their mapping and saved numbers; **Stop using** in the Sync card unlinks PostHog from one project and deletes its rows, connected or not.
 
 Routes: `/api/posthog/connect?region=us|eu` sets a 10-minute encrypted cookie (state, PKCE verifier, region) and redirects to PostHog; `/api/posthog/callback` checks the state, exchanges the code, saves the account and records `module_activated` with `module: "posthog"`. The metadata route is public (`src/proxy.ts`).
 
