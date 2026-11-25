@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { OAuth2Client } from "google-auth-library";
 import { db } from "@/db";
 import { googleAccounts } from "@/db/schema";
@@ -69,12 +69,18 @@ export async function saveAccount(workspaceId: number, input: {
 /**
  * Revokes the workspace's refresh token at Google, then forgets the account. The row is kept when
  * the revoke fails for another reason (network, Google down), so the grant is never left live and
- * orphaned.
+ * orphaned. Google revokes the account's whole grant to the app, not one token, so while another
+ * workspace uses the same Google account nothing is revoked and only this workspace's copy goes.
  */
 export async function disconnectAccount(workspaceId: number): Promise<{ ok: true } | { ok: false; error: string }> {
   const account = await getAccount(workspaceId);
   if (!account) return { ok: true };
-  if (oauthConfigured()) {
+  const [shared] = await db
+    .select({ id: googleAccounts.id })
+    .from(googleAccounts)
+    .where(and(eq(googleAccounts.googleSub, account.googleSub), ne(googleAccounts.workspaceId, workspaceId)))
+    .limit(1);
+  if (!shared && oauthConfigured()) {
     try {
       await newOAuthClient().revokeToken(decrypt(account.refreshTokenEnc));
     } catch (err) {

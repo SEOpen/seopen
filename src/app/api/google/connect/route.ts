@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { CodeChallengeMethod } from "google-auth-library";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { encrypt } from "@/lib/crypto";
+import { appOrigin } from "@/lib/hosts";
 import { newOAuthClient, oauthConfigured } from "@/modules/google/auth";
 import { OAUTH_COOKIE } from "@/modules/google/oauth-cookie";
 import { SCOPES } from "@/modules/google/types";
@@ -11,9 +12,9 @@ import { requireSession } from "@/lib/auth/session";
  * Starts the Google consent flow: state + PKCE verifier go into a short-lived httpOnly cookie.
  * Secure, as the PostHog flow's is. Browsers treat localhost as secure, so it still works on local http.
  */
-export async function GET(request: NextRequest) {
-  await requireSession();
-  if (!oauthConfigured()) return NextResponse.redirect(new URL("/gsc?google_error=not_configured", request.url));
+export async function GET() {
+  const user = await requireSession();
+  if (!oauthConfigured()) return NextResponse.redirect(new URL("/gsc?google_error=not_configured", appOrigin()));
 
   const client = newOAuthClient();
   const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
   });
 
   const res = NextResponse.redirect(url);
-  res.cookies.set(OAUTH_COOKIE, encrypt(JSON.stringify({ state, codeVerifier })), {
+  res.cookies.set(OAUTH_COOKIE, encrypt(JSON.stringify({ state, codeVerifier, userId: user.id })), {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

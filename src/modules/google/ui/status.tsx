@@ -59,6 +59,7 @@ const ERRORS: Record<string, string> = {
   not_configured: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are empty in the env file.",
   access_denied: "Consent was cancelled, or this Google account isn't allowed to use the app (add it as a test user while the app is in Testing).",
   state_mismatch: "The sign-in took too long or came from another tab. Try again.",
+  account_changed: "You switched SEOpen accounts while connecting, so nothing was connected. Try again.",
   no_refresh_token: "Google didn't return a refresh token. Remove SEOpen at myaccount.google.com/permissions, then connect again.",
   disconnect_failed: "Google couldn't revoke SEOpen's access (network or Google error), so the account is still connected. Try Disconnect again, or remove SEOpen at myaccount.google.com/permissions.",
   token_exchange_failed: "The code exchange failed. Check the client secret and that the redirect URI is exactly http://127.0.0.1:4100/api/google/callback.",

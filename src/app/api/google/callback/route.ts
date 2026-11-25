@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { track } from "@/lib/analytics/server";
 import { hooks } from "@/plan-policy/hooks";
 import { env } from "@/lib/env";
+import { appOrigin } from "@/lib/hosts";
 import { workspaceScope } from "@/lib/workspace/current";
 import { newOAuthClient, saveAccount } from "@/modules/google/auth";
 import { forgetGoogleProperties } from "@/modules/google/properties";
@@ -12,8 +13,9 @@ import { requireSession } from "@/lib/auth/session";
 export async function GET(request: NextRequest) {
   const user = await requireSession();
   const params = request.nextUrl.searchParams;
+  // appOrigin, not request.url: behind a proxy that names the address the server listens on (0.0.0.0:4100 in Docker).
   const back = (query: string) => {
-    const res = NextResponse.redirect(new URL(`/gsc?${query}`, request.url));
+    const res = NextResponse.redirect(new URL(`/gsc?${query}`, appOrigin()));
     res.cookies.delete({ name: OAUTH_COOKIE, path: "/api/google" });
     return res;
   };
@@ -26,6 +28,7 @@ export async function GET(request: NextRequest) {
   const state = params.get("state");
   const code = params.get("code");
   if (!saved || !state || !code || !sameState(saved.state, state)) return back("google_error=state_mismatch");
+  if (saved.userId !== user.id) return back("google_error=account_changed");
 
   try {
     const client = newOAuthClient();

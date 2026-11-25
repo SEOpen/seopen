@@ -49,6 +49,7 @@ const ERRORS: Record<string, string> = {
   not_configured: "PostHog sign-in needs SEOpen's https address, so it only works on a deploy served over https. Locally, set SEOPEN_POSTHOG_FIXTURES=1.",
   access_denied: "Consent was cancelled in PostHog. Connect again and approve SEOpen's access.",
   state_mismatch: "The sign-in took too long or came from another tab. Try again.",
+  account_changed: "You switched SEOpen accounts while connecting, so nothing was connected. Try again.",
   bad_region: "Pick US Cloud or EU Cloud.",
   disconnect_failed: "PostHog couldn't be reached to revoke SEOpen's access, so it is still connected. Try Disconnect again.",
   token_exchange_failed: "PostHog didn't accept the sign-in. Try connecting again.",
