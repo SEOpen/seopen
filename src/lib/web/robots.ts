@@ -26,11 +26,14 @@ export function parseRobots(text: string): Robots {
   // A run of user-agent lines opens one group; the first rule after them closes the run.
   let collectingAgents = false;
   for (const raw of text.replace(/^﻿/, "").split(/\r\n|\r|\n/)) {
-    const line = raw.replace(/#.*$/, "").trim();
-    const m = /^([A-Za-z-]+)\s*:\s*(.*)$/.exec(line);
-    if (!m) continue;
-    const key = m[1].toLowerCase();
-    const value = m[2].trim();
+    // Cut at the first "#" and the first ":" by position: the file is any site's, and a pattern over a whole line can backtrack.
+    const hash = raw.indexOf("#");
+    const line = hash < 0 ? raw : raw.slice(0, hash);
+    const colon = line.indexOf(":");
+    if (colon < 0) continue;
+    const key = line.slice(0, colon).trim().toLowerCase();
+    if (!/^[a-z-]+$/.test(key)) continue;
+    const value = line.slice(colon + 1).trim();
     if (key === "user-agent") {
       if (!collectingAgents || !current) {
         current = { agents: [], rules: [] };

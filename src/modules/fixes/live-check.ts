@@ -71,10 +71,17 @@ function manualCheck(page: LivePage, before: FixSnapshot | null, expect: string 
   return still("The title, meta description and H1 are the same as when the change was logged.");
 }
 
+/** A path without its trailing slashes. A loop, because `/\/+$/` takes quadratic time on a long run of slashes in the middle. */
+function withoutTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path[end - 1] === "/") end--;
+  return path.slice(0, end);
+}
+
 /** One address with or without www, http and a trailing slash, query and fragment dropped. */
 function samePage(a: URL, b: URL): boolean {
   const host = (u: URL) => u.hostname.replace(/^www\./, "");
-  const path = (u: URL) => (u.pathname.length > 1 ? u.pathname.replace(/\/+$/, "") : "/");
+  const path = (u: URL) => (u.pathname.length > 1 ? withoutTrailingSlashes(u.pathname) : "/");
   return host(a) === host(b) && path(a) === path(b);
 }
 

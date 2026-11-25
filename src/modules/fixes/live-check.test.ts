@@ -120,6 +120,14 @@ describe("liveCheck on hostile pages", () => {
     fast("no-charset", "<head>" + "<meta ".repeat(MB2 / 6));
   });
 
+  it("reads a link with a long run of slashes in linear time", () => {
+    const slashes = "/".repeat(1_000_000);
+    const started = Date.now();
+    expect(linksTo(`<a href="https://example.com${slashes}x">x</a>`, "https://example.com/", "https://example.com/a")).toBe(false);
+    expect(linksTo(`<a href="/a${slashes}">x</a>`, "https://example.com/", "https://example.com/a")).toBe(true);
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+
   it("still finds the tags it looks for", () => {
     expect(check("no-charset", page('<meta charset="utf-8">')).state).toBe("fixed");
     expect(check("no-charset", page("")).state).toBe("still_there");

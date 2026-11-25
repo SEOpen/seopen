@@ -10,6 +10,18 @@ describe("parseRobots", () => {
     expect(r.sitemaps).toEqual(["https://x.com/sitemap.xml"]);
   });
 
+  it("keeps a value's own colons and skips a line whose key isn't one", () => {
+    const r = parseRobots("User-agent : *\nDisallow: /a:b#c:d\n# Disallow: /x\nnot a key: /y\nno colon");
+    expect(r.groups).toEqual([{ agents: ["*"], rules: [{ allow: false, pattern: "/a:b" }] }]);
+  });
+
+  it("reads 500 KB lines in linear time", () => {
+    const run = " ".repeat(500_000);
+    const started = Date.now();
+    for (const text of [`${"#".repeat(500_000)}\u2028x`, `Sitemap:${run}x\u2028x`, `a${run}b`, `${"a".repeat(500_000)} `]) parseRobots(text);
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+
   it("treats an empty Disallow as allow everything", () => {
     const r = parseRobots("User-agent: *\nDisallow:");
     expect(isAllowed(r, "Googlebot", "/")).toBe(true);

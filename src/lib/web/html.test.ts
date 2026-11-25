@@ -65,6 +65,9 @@ describe("hostile HTML", () => {
     "a run of <": "<body>" + "<".repeat(MB2),
     "one tag of divs": "<body><div " + "<div ".repeat(MB2 / 5) + ">",
     "one long attribute name": "<head><meta " + "a".repeat(MB2) + ">",
+    "a directive with a long gap": `<head><meta name="robots" content="a${" ".repeat(MB2)}b"></head>`,
+    "a title with a long gap": `<head><title>a${" ".repeat(MB2)}b</title></head>`,
+    "attributes with long gaps": `<head><meta name${" ".repeat(MB2)}x></head>`,
   };
 
   it("reads a 2 MB page of unclosed markup in linear time", () => {

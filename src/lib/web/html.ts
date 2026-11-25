@@ -58,6 +58,12 @@ export function attributes(tag: string): Record<string, string> {
   return out;
 }
 
+/** "max-snippet : 50" → "max-snippet:50", at the first colon. Cut by position: a pattern for the spaces around it rescans a long run of them. */
+function tightColon(directive: string): string {
+  const colon = directive.indexOf(":");
+  return colon < 0 ? directive : `${directive.slice(0, colon).trimEnd()}:${directive.slice(colon + 1).trimStart()}`;
+}
+
 /** Directives with a value after a colon, which aren't a user-agent prefix. */
 const VALUE_DIRECTIVES = new Set(["max-snippet", "max-image-preview", "max-video-preview", "unavailable_after"]);
 
@@ -75,7 +81,7 @@ export function xRobotsDirectives(value: string): string[] {
       applies = m[1] === "googlebot" || m[1] === "*";
       part = m[2].trim();
     }
-    if (applies && part) out.push(part.replace(/\s*:\s*/, ":"));
+    if (applies && part) out.push(tightColon(part));
   }
   return out;
 }
@@ -262,7 +268,7 @@ export function pageFacts(html: string, headers: Record<string, string | string[
   const robots: string[] = [];
   for (const m of metas) {
     const name = m.name?.toLowerCase();
-    if (name === "robots" || name === "googlebot") robots.push(...(m.content ?? "").toLowerCase().split(",").map((d) => d.trim().replace(/\s*:\s*/, ":")).filter(Boolean));
+    if (name === "robots" || name === "googlebot") robots.push(...(m.content ?? "").toLowerCase().split(",").map((d) => tightColon(d.trim())).filter(Boolean));
   }
   const xRobots = headers["x-robots-tag"];
   for (const value of Array.isArray(xRobots) ? xRobots : xRobots ? [xRobots] : []) robots.push(...xRobotsDirectives(value));
