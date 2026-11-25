@@ -5,7 +5,7 @@
  * crawlers decide whether a page can be found and cited; training crawlers are the owner's choice
  * and are never scored or reported as faults. Pure, no I/O.
  */
-import { decidingRule, parseRobots, rulesFor, type Robots } from "./robots";
+import { parseRobots, pathRules, type Robots } from "./robots";
 
 export type CrawlerRole = "search" | "training" | "user";
 
@@ -53,9 +53,9 @@ export const robotsDown = (status: number | null) => status !== null && status >
  * fetchers act for a person and are left as the rules say.
  */
 export function crawlerAccess(robots: Robots, path: string, robotsStatus: number | null = null, crawlers: CrawlerDef[] = CRAWLERS): CrawlerAccess[] {
+  const ruleFor = pathRules(robots, path);
   return crawlers.map((c) => {
-    const { rules, named } = rulesFor(robots, c.token);
-    const rule = decidingRule(rules, path);
+    const { rule, named } = ruleFor(c.token);
     const access = { ...c, allowed: rule?.allow ?? true, rule: rule ? `${rule.allow ? "Allow" : "Disallow"}: ${rule.pattern}` : null, named };
     return robotsDown(robotsStatus) && c.role !== "user" ? { ...access, allowed: false, rule: `robots.txt answered ${robotsStatus}` } : access;
   });

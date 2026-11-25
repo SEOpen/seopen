@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brandTerms, coverage, coverSearches, fewLinksIn, gluedOnPage, isBrandSearch, mainSearch, mergeSearches, otherLanguage, ownerOf, paaQuestions, positionWeight, questionFits, readPage, stem, terms, termSet, titleIntents } from "./coverage";
+import { brandTerms, coverage, coverSearches, fewLinksIn, gluedOnPage, isBrandSearch, mainSearch, mergeSearches, otherLanguage, ownerOf, paaQuestions, positionWeight, questionFits, readPage, stem, terms, termSet, titleIntents, words } from "./coverage";
 
 describe("stem", () => {
   it.each([
@@ -239,5 +239,24 @@ describe("readPage", () => {
     // A closing call to action inside <main>, such as getseopen.com's beta block, isn't the outline.
     const cta = readPage(`<body><main><h1>Rank tracker</h1><h2>How it runs</h2><aside aria-labelledby="beta"><h2 id="beta">SEOpen is in private beta</h2></aside></main></body>`);
     expect(cta.headings.map((h) => h.text)).toEqual(["Rank tracker", "How it runs"]);
+  });
+});
+
+describe("readPage and words on hostile pages", () => {
+  it("reads 2 MB of headings and chrome in linear time, and still tells them apart", () => {
+    const unit = "<h2>a</h2><nav></nav><aside><h2>b</h2></aside>";
+    const n = Math.floor(2_000_000 / unit.length);
+    const started = Date.now();
+    const { headings } = readPage(unit.repeat(n));
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(headings).toHaveLength(n);
+    expect(headings.every((h) => h.text === "a")).toBe(true);
+  });
+
+  it("folds accents, and reads a long run of them in linear time", () => {
+    expect(words("Café Cafe\u0301 ﬁne Écija \u1e69")).toEqual(["cafe", "cafe", "fine", "ecija", "s"]);
+    const started = Date.now();
+    expect(words(`a${"\u0323\u0301".repeat(500_000)}b`)).toEqual(["ab"]);
+    expect(Date.now() - started).toBeLessThan(1500);
   });
 });

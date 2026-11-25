@@ -30,6 +30,10 @@ export interface SiteFacts {
 }
 
 const MAX_HEADINGS = 20;
+/** The most kept of a title or description. Far past what any search result shows. */
+const MAX_TEXT = 2_000;
+/** The longest heading, or name in structured data, that's read as one. */
+const MAX_NAME = 200;
 const MAX_CITIES = 5;
 
 /** schema.org types that mean a place customers visit or a business serving an area. */
@@ -40,7 +44,7 @@ export function headings(html: string): string[] {
   const out: string[] = [];
   for (const h of elements(html, ["h1", "h2", "h3"])) {
     const text = decodeEntities(stripTags(h.inner)).replace(/\s+/g, " ").trim();
-    if (text && text.length <= 200 && !out.includes(text)) out.push(text);
+    if (text && text.length <= MAX_NAME && !out.includes(text)) out.push(text);
     if (out.length >= MAX_HEADINGS) break;
   }
   return out;
@@ -63,7 +67,7 @@ export function serviceNames(html: string): string[] {
   for (const h of all.slice(start + 1)) {
     if (h.level <= all[start].level) break;
     const name = h.text.toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ").trim();
-    if (name && name.split(" ").length <= 5 && !/[?!:]/.test(name) && !out.includes(name)) out.push(name);
+    if (name && name.length <= MAX_NAME && name.split(" ").length <= 5 && !/[?!:]/.test(name) && !out.includes(name)) out.push(name);
     if (out.length >= MAX_SERVICES) break;
   }
   return out;
@@ -75,7 +79,8 @@ export function serviceNames(html: string): string[] {
  * longer one is a sentence about the business rather than the name of a service.
  */
 export function describedOffer(description: string | null): { offer: string | null; audiences: string[] } {
-  for (const sentence of (description ?? "").split(/(?<=[.!?])\s+/)) {
+  // Spaces are folded first, so the pattern below meets one at a time.
+  for (const sentence of (description ?? "").replace(/\s+/g, " ").split(/(?<=[.!?])\s+/)) {
     const m = sentence.match(/^([\p{L}][\p{L}&\s-]{2,40}?) for ([^.!?]+)[.!?]?$/u);
     if (!m) continue;
     const words = m[1].trim().split(/\s+/);
@@ -101,7 +106,11 @@ function entities(value: unknown, out: Json[] = []): Json[] {
   return out;
 }
 
-const str = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "");
+/** A string in structured data, or "" when it's too long to be a name. */
+const str = (v: unknown) => {
+  const s = typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
+  return s.length <= MAX_NAME ? s : "";
+};
 const typesOf = (e: Json) => (Array.isArray(e["@type"]) ? e["@type"] : [e["@type"]]).filter((t): t is string => typeof t === "string");
 const list = (v: unknown) => (Array.isArray(v) ? v : v == null ? [] : [v]);
 
@@ -109,13 +118,13 @@ const list = (v: unknown) => (Array.isArray(v) ? v : v == null ? [] : [v]);
 function jsonLd(html: string): { all: Json[]; byId: Map<string, Json> }[] {
   const out: { all: Json[]; byId: Map<string, Json> }[] = [];
   for (const block of jsonLdBlocks(html)) {
-    let parsed: unknown;
+    let all: Json[];
     try {
-      parsed = JSON.parse(block.trim());
+      all = entities(JSON.parse(block.trim()));
     } catch {
+      // It doesn't parse, or it's nested too deep to read.
       continue;
     }
-    const all = entities(parsed);
     out.push({ all, byId: new Map(all.filter((e) => typeof e["@id"] === "string").map((e) => [e["@id"] as string, e])) });
   }
   return out;
@@ -214,21 +223,28 @@ function decodedSegment(segment: string): string {
 
 /** The subjects of a homepage's links into its guides and the like, in page order: "/guides/basecamp-change-history" is "basecamp change history". */
 export function linkedTopics(html: string, domain: string): string[] {
-  const out: string[] = [];
+  const out = new Set<string>();
   for (const href of hrefs(html)) {
     const link = linkTo(href, domain);
     const slug = link && isSameSite(link.host, domain) ? link.path.match(TOPIC_SECTION)?.[1] : null;
     if (!slug) continue;
     const topic = decodedSegment(slug).toLowerCase().replace(/[-_]+/g, " ").trim();
-    if (topic && !out.includes(topic)) out.push(topic);
+    if (topic) out.add(topic);
   }
-  return out;
+  return [...out];
 }
 
 /** The path of a page that compares a site with its rivals. */
 export const COMPARE_PAGE = /^\/(?:vs|versus|compare|comparisons?|alternatives?)\/?$/i;
 
 const COMPARE_CHILD = /^\/(?:vs|versus|compare|comparisons?|alternatives?)\/([^/]+)\/?$/i;
+
+/** The most comparisons, and the most other sites, read off one comparison page. */
+const MAX_COMPARED = 200;
+/** A host name's longest, in DNS. */
+const MAX_HOST = 253;
+/** The most of a host's labels compared, from the right. */
+const MAX_LABELS = 5;
 
 const squashed = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
@@ -239,12 +255,12 @@ const squashed = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
  */
 export function comparedSites(page: string, domain: string): string[] {
   const links = hrefs(page).flatMap((href) => linkTo(href, domain) ?? []);
-  const children = links.filter((l) => isSameSite(l.host, domain)).flatMap((l) => l.path.match(COMPARE_CHILD)?.[1] ?? []);
-  const named = (children.length ? children : headings(page)).map(squashed);
+  const children = new Set(links.filter((l) => isSameSite(l.host, domain)).flatMap((l) => l.path.match(COMPARE_CHILD)?.[1] ?? []));
+  const named = (children.size ? [...children].filter((c) => c.length <= MAX_NAME).slice(0, MAX_COMPARED) : headings(page)).map(squashed);
+  const hosts = new Set(links.map((l) => l.host).filter((h) => !isSameSite(h, domain) && h.length <= MAX_HOST));
   const out: string[] = [];
-  for (const { host } of links) {
-    if (isSameSite(host, domain) || out.includes(host)) continue;
-    const labels = host.split(".").slice(0, -1).map(squashed).filter((l) => l.length >= 3);
+  for (const host of [...hosts].slice(0, MAX_COMPARED)) {
+    const labels = host.split(".").slice(0, -1).slice(-MAX_LABELS).map(squashed).filter((l) => l.length >= 3);
     if (labels.some((l) => named.some((n) => n.includes(l)))) out.push(host);
   }
   return out;
@@ -252,13 +268,14 @@ export function comparedSites(page: string, domain: string): string[] {
 
 export function siteFacts(html: string): SiteFacts {
   const facts = pageFacts(html);
+  const description = facts.description?.slice(0, MAX_TEXT) ?? null;
   return {
-    title: facts.title,
-    description: facts.description,
+    title: facts.title?.slice(0, MAX_TEXT) ?? null,
+    description,
     headings: headings(html),
     business: localBusiness(html),
     cities: servedCities(html),
     services: serviceNames(html),
-    ...describedOffer(facts.description),
+    ...describedOffer(description),
   };
 }

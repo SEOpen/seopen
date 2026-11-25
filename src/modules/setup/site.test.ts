@@ -144,3 +144,40 @@ describe("comparedSites", () => {
     expect(comparedSites(`<h2>Acme vs Rival</h2><a href="https://rival.com/">x</a><a href="https://stripe.com/">x</a>`, "acme.com")).toEqual(["rival.com"]);
   });
 });
+
+describe("hostile homepages", () => {
+  const MB = 1_000_000;
+  const fast = (name: string, run: () => unknown) => {
+    const started = Date.now();
+    run();
+    expect(Date.now() - started, name).toBeLessThan(1500);
+  };
+  const many = (bytes: number, unit: (i: number) => string) => Array.from({ length: Math.floor(bytes / unit(0).length) }, (_, i) => unit(i)).join("");
+
+  it("reads 1 MB of them in linear time", () => {
+    fast("description", () => describedOffer(`Web design for startups${" ".repeat(MB)}x`));
+    fast("topics", () => linkedTopics(many(MB, (i) => `<a href="/blog/${i}">`), "acme.com"));
+    const children = many(MB / 2, (i) => `<a href="/vs/q${i}">`);
+    fast("comparisons", () => comparedSites(children + many(MB / 2, (i) => `<a href="//z${i}.example">`), "acme.com"));
+    const labels = (i: number) => Array.from({ length: 60 }, (_, l) => "a" + "ab".repeat(1 + (l % 2)) + (l === 0 ? i : "")).join(".").slice(0, 200);
+    fast("many labels", () => comparedSites(many(100_000, (i) => `<a href="/vs/${"a".repeat(195)}${i % 900}">`) + many(60_000, (i) => `<a href="//${labels(i)}.example">`), "acme.com"));
+    fast("one long comparison", () => comparedSites(`<a href="/vs/${"q".repeat(MB / 2)}">` + many(MB / 2, (i) => `<a href="//z${i}.example">`), "acme.com"));
+  });
+
+  it("skips structured data nested too deep to read, and keeps the rest", () => {
+    const block = (json: string) => `<script type="application/ld+json">${json}</script>`;
+    const html = block("[".repeat(200_000) + "]".repeat(200_000)) + block('{"@type":"Plumber","name":"Fernhill","address":{"addressLocality":"Riverton"}}');
+    expect(localBusiness(html)?.name).toBe("Fernhill");
+    expect(servedCities(html)).toEqual(["Riverton"]);
+    expect(siteFacts(html)).toMatchObject({ business: { name: "Fernhill" }, cities: ["Riverton"] });
+  });
+
+  it("cuts a title and description at 2,000 characters, and drops a name too long to be one", () => {
+    const long = "x".repeat(5_000);
+    const business = `<script type="application/ld+json">{"@type":"Plumber","name":"${long}","address":{"addressLocality":"Riverton"}}</script>`;
+    const facts = siteFacts(`<head><title>${long}</title><meta name="description" content="${long}"></head>${business}`);
+    expect([facts.title?.length, facts.description?.length]).toEqual([2_000, 2_000]);
+    expect(facts.business).toBeNull();
+    expect(facts.cities).toEqual(["Riverton"]);
+  });
+});

@@ -64,7 +64,8 @@ export async function readSitemap(domain: string, fetch: Fetch = safeFetch): Pro
       continue;
     }
     const parsed = sitemapEntries(r.body);
-    if (parsed.index) children.push(...parsed.entries.map((e) => e.loc));
+    // One at a time, so any number fits.
+    if (parsed.index) for (const e of parsed.entries) children.push(e.loc);
     else take(parsed.entries);
   }
   const queue = [...new Set(children)].slice(0, MAX_CHILD_SITEMAPS);

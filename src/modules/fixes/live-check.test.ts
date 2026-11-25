@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkTarget, linksCheck, linksTo, liveCheck, snapshotOf } from "./live-check";
+import { checkTarget, linksCheck, linkVerdict, linksTo, liveCheck, snapshotOf } from "./live-check";
 
 const page = (head: string, body = "<p>Enough words on this page to count as a page.</p>", status = 200) => ({ status, html: `<!doctype html><html><head>${head}</head><body>${body}</body></html>`, headers: {} });
 const check = (code: string, p: ReturnType<typeof page>, detail: string | null = null, before: Parameters<typeof liveCheck>[2] = null) => liveCheck({ code, detail }, p, before);
@@ -226,7 +226,7 @@ describe("a logged change", () => {
 
 describe("links added to a page", () => {
   const target = "https://fix.example/pricing";
-  const from = (url: string, body: string, status = 200) => ({ url, page: page("<title>Post</title>", body, status) });
+  const from = (url: string, body: string, status = 200) => ({ url, verdict: linkVerdict(target, url, page("<title>Post</title>", body, status)) });
 
   it("finds a link to the page under any of its addresses, relative ones read against the linking page", () => {
     const at = "https://fix.example/blog/post";
@@ -248,8 +248,19 @@ describe("links added to a page", () => {
 
   it("can't judge a linking page it couldn't read, or one that needs JavaScript", () => {
     const a = from("https://fix.example/a", '<a href="/pricing">plans</a>');
-    expect(linksCheck(target, [a, { url: "https://fix.example/gone", error: "That site didn't answer." }]).state).toBe("cannot_check");
+    const gone = { url: "https://fix.example/gone", verdict: "unread" } as const;
+    expect(linksCheck(target, [a, gone])).toEqual({ state: "cannot_check", saw: "SEOpen couldn't read /gone without JavaScript or at all, so it can't tell whether it links to /pricing." });
     expect(linksCheck(target, [a, from("https://fix.example/404", "", 404)]).state).toBe("cannot_check");
     expect(linksCheck(target, [from("https://fix.example/app", '<div id="root"></div>')]).state).toBe("cannot_check");
+  });
+
+  it("judges one linking page: an error page isn't read, and a link counts even on a page that needs JavaScript", () => {
+    const verdict = (body: string, status = 200) => from("https://fix.example/a", body, status).verdict;
+    const link = '<a href="/pricing">plans</a>';
+    expect(verdict(link)).toBe("links");
+    expect(verdict(link, 404)).toBe("unread");
+    expect(verdict("<p>No link here yet, only enough words.</p>")).toBe("missing");
+    expect(verdict('<div id="root"></div>')).toBe("unread");
+    expect(verdict(`<div id="root">${link}</div>`)).toBe("links");
   });
 });

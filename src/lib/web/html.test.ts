@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentWordCount, elements, openTags, pageFacts, snippetBlocks, stripTags, visibleText, xRobotsDirectives } from "./html";
+import { contentWordCount, decodeEntities, elements, openTags, pageFacts, snippetBlocks, stripTags, visibleText, xRobotsDirectives } from "./html";
 
 describe("xRobotsDirectives", () => {
   it("keeps unprefixed and googlebot directives, drops other crawlers'", () => {
@@ -53,6 +53,25 @@ describe("visibleText", () => {
   });
 });
 
+describe("decodeEntities", () => {
+  it("decodes numeric entities, decimal and hex", () => {
+    expect(decodeEntities("&#65;&#x42;&#x1F600;&#X43;")).toBe("AB\u{1F600}C");
+  });
+
+  it("reads a number that isn't a character as U+FFFD, as browsers do", () => {
+    for (const e of ["&#0;", "&#x0;", "&#xD800;", "&#57343;", "&#x110000;", "&#1114112;", `&#${"9".repeat(400)};`]) expect(decodeEntities(`a${e}b`), e).toBe("a\ufffdb");
+    expect(decodeEntities("&#xD7FF;&#xE000;&#x10FFFF;")).toBe("\ud7ff\ue000\u{10ffff}");
+  });
+
+  it("leaves a name it doesn't know as it is, a built-in property's included", () => {
+    expect(decodeEntities("&constructor; &toString; &nosuch; &amp;")).toBe("&constructor; &toString; &nosuch; &");
+  });
+
+  it("keeps a page readable around a bad one", () => {
+    expect(pageFacts('<head><title>Fern &#x110000; Hill</title><meta name="description" content="&#99999999;"></head>')).toMatchObject({ title: "Fern \ufffd Hill", description: "\ufffd" });
+  });
+});
+
 describe("hostile HTML", () => {
   const MB2 = 2_000_000;
   const pages: Record<string, string> = {
@@ -77,6 +96,10 @@ describe("hostile HTML", () => {
       // Each took minutes before; linear scanning takes tens of milliseconds.
       expect(Date.now() - started, name).toBeLessThan(1500);
     }
+  });
+
+  it("reads a meta robots with a million directives", () => {
+    expect(pageFacts(`<head><meta name="robots" content="${"a,".repeat(MB2 / 2)}noindex"></head>`).robots).toEqual(["a", "noindex"]);
   });
 
   it("finds elements as the lazy regex did, skipping a name with no closer left", () => {

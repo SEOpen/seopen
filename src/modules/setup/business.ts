@@ -47,6 +47,17 @@ const LIST = new RegExp(`${RUN}(?:, ${RUN})*,? and ${RUN}`, "gu");
 const AFTER_WORD = new RegExp(`\\b(?:in|near|serving|throughout|across|around)\\s+(${RUN}(?:, ${RUN})*(?:,? and ${RUN})?)`, "gu");
 const STATES = stateNames();
 const BEFORE_STATE = new RegExp(`(${RUN}),? (${STATES.join("|")})\\b(?: \\d{5})?`, "gu");
+/**
+ * The first capital in a run of name characters. A name that fits from a later one fits from this
+ * one too, so starting only here finds the same names and reads a long run once, not from each
+ * capital in it. The lookbehind is lazy, so it stops at the nearest capital.
+ */
+const NAME_START = "(?=[A-Z])(?<![A-Z][\\p{L}'’-]*?)";
+const ADDRESS = new RegExp(`${NAME_START}(${RUN}),? (${STATES.filter((s) => s.length === 2).join("|")}) \\d{5}`, "gu");
+/** The most of one line read for towns. A title or description is far shorter, and the patterns above are for short text. */
+const MAX_LINE = 2_000;
+/** The most addresses read off one page. */
+const MAX_ADDRESSES = 500;
 /** Words after a town that make it an area rather than a town: "Riverton Bay" is around Riverton. */
 const METRO = /\s+(?:bay|area|metro|region)$/i;
 
@@ -59,6 +70,13 @@ export interface TownNames {
 
 const clean = (s: string) => s.replace(/['’]s$/, "").replace(/\.$/, "").trim();
 const split = (list: string) => list.split(/,\s*(?:and\s+)?|\s+and\s+/).map(clean).filter(Boolean);
+
+/** A line cut to `MAX_LINE` at a space, so no name is cut in two. */
+function shortLine(line: string): string {
+  if (line.length <= MAX_LINE) return line;
+  const space = line.lastIndexOf(" ", MAX_LINE);
+  return line.slice(0, space > 0 ? space : MAX_LINE);
+}
 
 /** The endings of a run of capitalised words, longest first, each followed by itself without "Bay" or "Area". */
 function endings(run: string): string[] {
@@ -88,7 +106,7 @@ export function townCandidates(lines: string[]): TownNames[] {
       out.push({ names, region });
     }
   };
-  for (const line of lines) {
+  for (const line of lines.map(shortLine)) {
     const found: { at: number; names: string[]; region?: string }[] = [];
     for (const m of line.matchAll(BEFORE_STATE)) found.push({ at: m.index, names: endings(m[1]), region: regionName(m[2], "us") });
     for (const m of line.matchAll(LIST)) for (const name of split(m[0])) found.push({ at: m.index + m[0].indexOf(name), names: endings(name) });
@@ -101,8 +119,9 @@ export function townCandidates(lines: string[]): TownNames[] {
 /** Street addresses in a page's text ("Riverton, TX 77550"): the surest sign of where a business is. */
 export function addressTowns(text: string): TownNames[] {
   const out: TownNames[] = [];
-  for (const m of text.matchAll(new RegExp(`(${RUN}),? (${STATES.filter((s) => s.length === 2).join("|")}) \\d{5}`, "gu"))) {
+  for (const m of text.matchAll(ADDRESS)) {
     out.push({ names: endings(m[1]), region: regionName(m[2], "us") });
+    if (out.length >= MAX_ADDRESSES) break;
   }
   return out;
 }
@@ -116,16 +135,20 @@ export const namesToLookUp = (candidates: TownNames[]) => [...new Set(candidates
  * states stays without one, for the user to settle.
  */
 export function matchTowns(candidates: TownNames[], places: { name: string }[], max = 5): string[] {
-  const rows = places.map((p) => {
+  const rows = new Map<string, { region: string | null }[]>();
+  for (const p of places) {
     const [town, ...rest] = p.name.split(",").map((s) => s.trim());
-    return { key: placeKey(town), region: rest[0] ?? null };
-  });
+    const key = placeKey(town);
+    const same = rows.get(key) ?? [];
+    same.push({ region: rest[0] ?? null });
+    rows.set(key, same);
+  }
   const regions = new Set(candidates.flatMap((c) => (c.region ? [c.region] : [])));
   const out: string[] = [];
   for (const c of candidates) {
     for (const name of c.names) {
-      const here = rows.filter((r) => r.key === placeKey(name));
-      if (!here.length) continue;
+      const here = rows.get(placeKey(name));
+      if (!here) continue;
       const fit = here.filter((r) => r.region && (c.region ? r.region === c.region : regions.has(r.region)));
       if (regions.size && !fit.length) continue;
       const region = fit[0]?.region ?? (here.length === 1 ? here[0].region : null);
@@ -153,6 +176,12 @@ function namesSchemaType(html: string, types: string): boolean {
   });
 }
 
+/** Whether a link reads "try … free", as `/try .*free/` would, read once rather than from every "try". */
+function triesFree(text: string): boolean {
+  const at = text.indexOf("try ");
+  return at >= 0 && text.includes("free", at + 4);
+}
+
 /**
  * A first guess at the type, from what's on the homepage. The strongest signals are schema.org
  * types; a tie goes to the type that sells online, since a software company with a phone number
@@ -168,7 +197,7 @@ export function detectBusinessType(html: string, facts: { hasLocalBusiness: bool
     (schema("SoftwareApplication|WebApplication|MobileApplication") ? 3 : 0) +
     (linked(/^(pricing|plans|plans (and|&) pricing)$/) ? 1 : 0) +
     (linked(/^(log ?in|sign ?in|sign ?up|get started)$/) ? 1 : 0) +
-    (linked(/free trial|start free|try .*free|for free/) ? 1 : 0) +
+    (links.some(triesFree) || linked(/free trial|start free|for free/) ? 1 : 0) +
     (linked(/^(api|docs|documentation|integrations)$/) ? 1 : 0);
   const store = (schema("Product|Offer|AggregateOffer") ? 3 : 0) + (linked(/^(cart|basket|checkout|my cart)\b/) ? 2 : 0) + (/cdn\.shopify\.com|woocommerce/i.test(html) ? 2 : 0);
 

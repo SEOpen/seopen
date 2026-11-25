@@ -45,11 +45,15 @@ export function stem(word: string): string {
   return w;
 }
 
-/** Lowercased words with accents folded, in order. */
+/**
+ * Lowercased words with accents folded, in order. Accents go before `normalize` as well as after,
+ * so it has no long run of them to sort.
+ */
 export function words(text: string): string[] {
   return (
     text
       .toLowerCase()
+      .replace(/\p{M}/gu, "")
       .normalize("NFKD")
       .replace(/\p{M}/gu, "")
       .match(/[\p{L}\p{N}]+/gu) ?? []
@@ -356,7 +360,13 @@ export function readPage(html: string): PageText {
   const doc = stripComments(html);
   const main = elements(doc, ["main"], 1)[0];
   const chrome = elements(doc, main ? ["aside"] : CHROME);
-  const own = (at: number) => (!main || (at >= main.start && at < main.end)) && !chrome.some((c) => at >= c.start && at < c.end);
+  // Both lists are in page order, so each heading carries on from the last one's place among the chrome.
+  let next = 0;
+  const inChrome = (at: number) => {
+    while (next < chrome.length && chrome[next].end <= at) next++;
+    return next < chrome.length && at >= chrome[next].start;
+  };
+  const own = (at: number) => (!main || (at >= main.start && at < main.end)) && !inChrome(at);
   const headings = elements(doc, ["h1", "h2", "h3"])
     .filter((e) => e.name === "h1" || own(e.start))
     .map((e) => ({ level: Number(e.name.slice(1)) as Heading["level"], text: decodeEntities(stripTags(e.inner)).replace(/\s+/g, " ").trim() }))

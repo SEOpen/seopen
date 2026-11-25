@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import pLimit, { type LimitFunction } from "p-limit";
 import { db } from "@/db";
 import { saveInspection } from "@/modules/indexing/inspection";
 import { fixes, projects, type FixLiveCheck, type FixSnapshot } from "@/db/schema";
@@ -10,12 +11,12 @@ import { inScope, workspaceTimeZone, type ProjectScope } from "@/lib/workspace";
 import { googleApis } from "@/modules/google/apis";
 import { urlInProperty } from "@/modules/google/inspect-url";
 import { pageKey } from "@/modules/google/matching";
-import { fetchErrorMessage, safeFetch } from "@/lib/web/fetch";
+import { fetchErrorMessage, safeFetch, type FetchResult } from "@/lib/web/fetch";
 import { fixesByIds, crawledPage, type Fix } from "./queries";
 import { linkedFrom, MANUAL_CODE } from "./catalog";
 import { offSiteReason, onProjectDomain } from "./domain";
 import { pageVariants } from "./measure";
-import { checkTarget, linksCheck, liveCheck, snapshotOf, type LinkSource } from "./live-check";
+import { checkTarget, linksCheck, linkVerdict, liveCheck, snapshotOf, type LinkSource } from "./live-check";
 import { impressionsByPage } from "./sync";
 
 /** The most fixes one call can change: a commit that touches a shared template can fix many. */
@@ -24,6 +25,8 @@ export const MAX_APPLY = 100;
 export const MAX_VERIFY = 20;
 
 const FETCH_TIMEOUT_MS = 10_000;
+/** Linking pages fetched and read at once, over a whole call: each can be 2 MB. One fix's all fit. */
+const LINK_PAGES = 20;
 
 type ProjectRef = Pick<typeof projects.$inferSelect, "domain" | "gscProperty">;
 
@@ -302,11 +305,14 @@ export async function reopenFix(scope: ProjectScope, id: number): Promise<void> 
   await db.update(fixes).set({ status: "open", dismissedAt: null, dismissedReason: null, updatedAt: now }).where(and(inScope(fixes, scope), eq(fixes.id, id), eq(fixes.status, "dismissed")));
 }
 
-/** Fetches the page and compares it with the finding. A page it can't reach is a page it can't judge. */
-export async function runLiveCheck(fix: Pick<Fix, "code" | "url" | "detail" | "before" | "evidence">, domain: string, now = new Date()): Promise<FixLiveCheck> {
+/**
+ * Fetches the page and compares it with the finding. A page it can't reach is a page it can't judge.
+ * `linkPages` limits the linking pages read at once, shared by the checks of one call.
+ */
+export async function runLiveCheck(fix: Pick<Fix, "code" | "url" | "detail" | "before" | "evidence">, domain: string, now = new Date(), linkPages: LimitFunction = pLimit(LINK_PAGES)): Promise<FixLiveCheck> {
   const checkedAt = now.toISOString();
   const sources = fix.code === MANUAL_CODE ? linkedFrom(fix.evidence) : [];
-  if (sources.length) return runLinksCheck(fix, sources, domain, checkedAt);
+  if (sources.length) return runLinksCheck(fix, sources, domain, checkedAt, linkPages);
   const target = checkTarget(fix.code, fix.url);
   if (!onProjectDomain(target, domain)) return { state: "cannot_check", saw: `${target} isn't on ${domain}, so SEOpen didn't fetch it.`, checkedAt, status: null };
   try {
@@ -319,26 +325,29 @@ export async function runLiveCheck(fix: Pick<Fix, "code" | "url" | "detail" | "b
   }
 }
 
+/** One linking page, fetched and judged, so its HTML needn't be kept. `status` is null when nothing was read. */
+async function readLinkSource(target: string, url: string, domain: string): Promise<LinkSource & { status: number | null }> {
+  const unread = { url, verdict: "unread", status: null } as const;
+  if (!onProjectDomain(url, domain)) return unread;
+  let r: FetchResult;
+  try {
+    r = await safeFetch(url, { timeoutMs: FETCH_TIMEOUT_MS });
+  } catch {
+    return unread;
+  }
+  if (offSiteReason(r, domain)) return unread;
+  return { url, verdict: linkVerdict(target, url, { status: r.status, html: r.body, headers: r.headers }), status: r.status };
+}
+
 /**
  * A logged change with `linked_from`: each linking page is fetched and must link to the page. Once
- * they all do, a named `expect` is looked for on the page itself as usual.
+ * they all do, a named `expect` is looked for on the page itself as usual. A few pages at a time,
+ * and only what each one said is kept.
  */
-async function runLinksCheck(fix: Pick<Fix, "code" | "url" | "detail" | "before" | "evidence">, sources: string[], domain: string, checkedAt: string): Promise<FixLiveCheck> {
-  const read: LinkSource[] = await Promise.all(
-    sources.map(async (url): Promise<LinkSource> => {
-      if (!onProjectDomain(url, domain)) return { url, error: `${url} isn't on ${domain}.` };
-      try {
-        const r = await safeFetch(url, { timeoutMs: FETCH_TIMEOUT_MS });
-        const away = offSiteReason(r, domain);
-        return away ? { url, error: away } : { url, page: { status: r.status, html: r.body, headers: r.headers } };
-      } catch (err) {
-        return { url, error: fetchErrorMessage(err) };
-      }
-    }),
-  );
+async function runLinksCheck(fix: Pick<Fix, "code" | "url" | "detail" | "before" | "evidence">, sources: string[], domain: string, checkedAt: string, linkPages: LimitFunction): Promise<FixLiveCheck> {
+  const read = await Promise.all(sources.map((url) => linkPages(() => readLinkSource(fix.url, url, domain))));
   const links = linksCheck(fix.url, read);
-  const firstStatus = read.find((r) => "page" in r);
-  const status = firstStatus && "page" in firstStatus ? firstStatus.page.status : null;
+  const status = read.find((r) => r.status !== null)?.status ?? null;
   if (links.state !== "fixed" || !fix.evidence?.expect) return { ...links, checkedAt, status };
   const page = await runLiveCheck({ ...fix, evidence: { expect: fix.evidence.expect } }, domain, new Date(checkedAt));
   return page.state === "fixed" ? { ...page, saw: `${links.saw} ${page.saw}` } : page;
@@ -410,8 +419,9 @@ export async function verifyFixes(scope: ProjectScope, ids: number[], { again = 
   const skipped = unique.filter((id) => !byId.has(id)).map((id) => ({ id, why: "There's no fix with that id in this project." }));
   if (!rows.length) return { fixes: [], skipped };
   const project = await projectOf(scope);
+  const linkPages = pLimit(LINK_PAGES);
   const checked = await inBatches(rows, 5, async (fix) => {
-    const check = await runLiveCheck(fix, project.domain);
+    const check = await runLiveCheck(fix, project.domain, new Date(), linkPages);
     let google: GoogleView | null = null;
     if (project.gscProperty && urlInProperty(fix.url, project.gscProperty)) {
       try {

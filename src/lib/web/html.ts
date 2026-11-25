@@ -37,12 +37,17 @@ const ENTITIES: Record<string, string> = {
   lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”", laquo: "«", raquo: "»", copy: "©", reg: "®", trade: "™", times: "×",
 };
 
+/** A numeric entity's character. As in HTML, U+FFFD for a number that isn't one: 0, a surrogate, or past the last code point. */
+function codePoint(n: number): string {
+  return n === 0 || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff) ? "\ufffd" : String.fromCodePoint(n);
+}
+
 export function decodeEntities(s: string): string {
   return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+\d*);/gi, (m, e: string) => {
     const lower = e.toLowerCase();
-    if (lower.startsWith("#x")) return String.fromCodePoint(parseInt(lower.slice(2), 16) || 32);
-    if (lower.startsWith("#")) return String.fromCodePoint(parseInt(lower.slice(1), 10) || 32);
-    return ENTITIES[lower] ?? m;
+    if (lower.startsWith("#x")) return codePoint(parseInt(lower.slice(2), 16));
+    if (lower.startsWith("#")) return codePoint(parseInt(lower.slice(1), 10));
+    return Object.hasOwn(ENTITIES, lower) ? ENTITIES[lower] : m;
   });
 }
 
@@ -268,7 +273,9 @@ export function pageFacts(html: string, headers: Record<string, string | string[
   const robots: string[] = [];
   for (const m of metas) {
     const name = m.name?.toLowerCase();
-    if (name === "robots" || name === "googlebot") robots.push(...(m.content ?? "").toLowerCase().split(",").map((d) => tightColon(d.trim())).filter(Boolean));
+    if (name !== "robots" && name !== "googlebot") continue;
+    // One at a time, so any number fits.
+    for (const d of (m.content ?? "").toLowerCase().split(",")) if (d.trim()) robots.push(tightColon(d.trim()));
   }
   const xRobots = headers["x-robots-tag"];
   for (const value of Array.isArray(xRobots) ? xRobots : xRobots ? [xRobots] : []) robots.push(...xRobotsDirectives(value));

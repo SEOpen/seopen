@@ -99,22 +99,25 @@ export function linksTo(html: string, pageUrl: string, target: string): boolean 
   });
 }
 
-/** What a fetch of one linking page returned, or why there's nothing to read. */
-export type LinkSource = { url: string; page: LivePage } | { url: string; error: string };
+/** Whether a linking page links to the page, doesn't, or couldn't be read. */
+export type LinkVerdict = "links" | "missing" | "unread";
+export type LinkSource = { url: string; verdict: LinkVerdict };
+
+/** What one fetched linking page says, in its raw HTML. A page that needs JavaScript can't be judged. */
+export function linkVerdict(target: string, url: string, page: LivePage): LinkVerdict {
+  if (page.status >= 400) return "unread";
+  if (linksTo(page.html, url, target)) return "links";
+  return pageFacts(page.html, page.headers).jsShell ? "unread" : "missing";
+}
 
 /**
  * A logged change that added links to a page from others (`linked_from`): live once every one of
- * them links to it in its raw HTML. A page that can't be read, or needs JavaScript, can't be judged.
+ * them links to it. A page that couldn't be read can't be judged.
  */
 export function linksCheck(target: string, sources: LinkSource[]): { state: LiveState; saw: string } {
-  const missing: string[] = [];
-  const unread: string[] = [];
-  for (const s of sources) {
-    if ("error" in s || s.page.status >= 400) unread.push(pathOf(s.url));
-    else if (linksTo(s.page.html, s.url, target)) continue;
-    else if (pageFacts(s.page.html, s.page.headers).jsShell) unread.push(pathOf(s.url));
-    else missing.push(pathOf(s.url));
-  }
+  const named = (verdict: LinkVerdict) => sources.filter((s) => s.verdict === verdict).map((s) => pathOf(s.url));
+  const missing = named("missing");
+  const unread = named("unread");
   const to = pathOf(target);
   const n = sources.length;
   const pages = (k: number) => `${k} ${k === 1 ? "page" : "pages"}`;

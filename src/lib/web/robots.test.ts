@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { decidingRule, isAllowed, parseRobots, rulesFor } from "./robots";
+import { crawlerAccess } from "./crawlers";
+import { decidingRule, isAllowed, parseRobots, pathRules, rulesFor } from "./robots";
 
 describe("parseRobots", () => {
   it("groups consecutive user-agent lines and collects sitemaps", () => {
@@ -60,14 +61,54 @@ describe("decidingRule", () => {
   });
 });
 
+describe("pathRules", () => {
+  it("reads a crawler's groups together: the longest rule, allow on a tie, the first of equals", () => {
+    const r = parseRobots("User-agent: GPTBot\nUser-agent: CCBot\nDisallow: /blog\nUser-agent: CCBot\nAllow: /blog\nUser-agent: GPTBot\nDisallow: /blog/\nUser-agent: *\nDisallow: /blog/post");
+    const ruleFor = pathRules(r, "/blog/post");
+    expect(ruleFor("GPTBot")).toEqual({ rule: { allow: false, pattern: "/blog/" }, named: true });
+    expect(ruleFor("CCBot")).toEqual({ rule: { allow: true, pattern: "/blog" }, named: true });
+    expect(ruleFor("Bingbot")).toEqual({ rule: { allow: false, pattern: "/blog/post" }, named: false });
+    for (const token of ["GPTBot", "CCBot", "Bingbot"]) expect(ruleFor(token).rule).toBe(decidingRule(rulesFor(r, token).rules, "/blog/post"));
+  });
+});
+
 describe("decidingRule on a hostile robots.txt", () => {
   const rule = (pattern: string) => ({ allow: false, pattern });
 
   it("matches many wildcards against a long path in linear time", () => {
     const started = Date.now();
-    // As a regex, six of these never finished on a 200-character path.
     expect(decidingRule([rule("/" + "*a".repeat(50) + "*b")], "/" + "a".repeat(500))).toBeNull();
     expect(Date.now() - started).toBeLessThan(500);
+  });
+
+  it("decides a 500 KB file for five long paths and every crawler", () => {
+    const file = (line: (i: number) => string) => {
+      const lines: string[] = [];
+      for (let size = 0, i = 0; size < 500_000; size += lines[i++].length) lines.push(line(i));
+      return `User-agent: *\n${lines.join("")}`;
+    };
+    const long = "a".repeat(2_000);
+    const files = {
+      "many wildcards": file((i) => `Disallow:/*a*a*a*a${i}\n`),
+      "short rules": file(() => "Disallow:/*b\n"),
+      "long parts": file((i) => `Disallow:/*${"a".repeat((i % 1_900) + 1)}*b\n`),
+      "bad escapes": file(() => "Disallow:/é%\n"),
+      "many groups": file((i) => `User-agent: *\nDisallow:/*a${i}b\n`),
+    };
+    for (const [name, text] of Object.entries(files)) {
+      const robots = parseRobots(text);
+      const started = Date.now();
+      for (let i = 0; i < 5; i++) for (const c of crawlerAccess(robots, `/${long}x${i}`)) expect(c.allowed).toBe(true);
+      // About 40 ms on a laptop.
+      expect(Date.now() - started, name).toBeLessThan(3000);
+    }
+  });
+
+  it("finds a part of any length at its first place after the one before", () => {
+    const path = "/aaaab-aaaac-aaaab-aaaad-caf%C3%A9-aaaab";
+    const hits = (pattern: string) => decidingRule([rule(pattern)], path) !== null;
+    expect(["/*aaaab*aaaab*aaaab", "/*aaaab*aaaab*aaaab$", "/*aaaac-*-aaaad", "/*café-", "/**-aaaa*$", "/*aaab-aaaac-aaaab-aaaad"].filter((p) => !hits(p))).toEqual([]);
+    expect(["/*aaaab*aaaab*aaaab*aaaab", "/*aaaad*aaaac", "/*aaaaa", "/*aaaad$", "/*aaaab*aaaab*aaaab*b$", "/*aaab-aaaad-aaaab"].filter(hits)).toEqual([]);
   });
 
   it("matches as the old regex did", () => {
@@ -83,6 +124,14 @@ describe("decidingRule on a hostile robots.txt", () => {
       const pattern = "/" + pick("ab*$?", Math.floor(r() * 6), r);
       const path = "/" + pick("ab$?", Math.floor(r() * 8), r);
       expect(decidingRule([rule(pattern)], path) !== null, `${pattern} on ${path}`).toBe(regex(pattern).test(path));
+    }
+    // Longer parts, many rules to a path: what one rule found mustn't change another's answer.
+    for (let i = 0; i < 1_000; i++) {
+      const path = "/" + pick("ab", 60, r);
+      const parts = Array.from({ length: 4 }, () => pick("ab", 5 + Math.floor(r() * 3), r));
+      const patterns = Array.from({ length: 12 }, () => "/*" + Array.from({ length: 1 + Math.floor(r() * 3) }, () => parts[Math.floor(r() * 4)]).join("*"));
+      const longest = patterns.filter((p) => regex(p).test(path)).reduce<string | null>((best, p) => (best === null || p.length > best.length ? p : best), null);
+      expect(decidingRule(patterns.map(rule), path)?.pattern ?? null, `${patterns.join(" ")} on ${path}`).toBe(longest);
     }
   });
 });

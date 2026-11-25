@@ -14,7 +14,7 @@ const ready = await testDb();
 const { db } = await import("@/db");
 const s = await import("@/db/schema");
 const { safeFetch } = await import("@/lib/web/fetch");
-const { dismissFixes, recordChanges, siteUrl, verifyFixes } = await import("./ops");
+const { dismissFixes, recordChanges, runLiveCheck, siteUrl, verifyFixes } = await import("./ops");
 const { syncAuditFixes } = await import("./sync");
 const { fixCounts, fixDetail, fixSummary, listFixes, liveDaysForPage, loggedChanges } = await import("./queries");
 const { dueResults } = await import("./measure");
@@ -167,6 +167,40 @@ describe.skipIf(!ready)("logging a change", () => {
     expect((await verifyFixes(scope, [id!])).fixes[0]).toMatchObject({ live_check: { state: "still_there", saw: "The page doesn't contain “Plans for small teams” yet." } });
     fetched(page("Plans for small teams", "Heading", '<a href="/pricing">plans</a>'));
     expect((await verifyFixes(scope, [id!])).fixes[0]).toMatchObject({ status: "live", live_check: { state: "fixed", saw: "/a links to /pricing. The page contains “Plans for small teams”." } });
+  });
+
+  it("reads linking pages a few at a time over a whole call, and says the same of a missing, unreadable or JavaScript page", async () => {
+    const { scope } = await seed();
+    fetched(page("Old"));
+    const ids: number[] = [];
+    for (const n of [1, 2, 3]) ids.push((await recordChanges(scope, actor, { urls: [`/target-${n}`], linkedFrom: Array.from({ length: 20 }, (_, i) => `/p${n}-${i}`) })).recorded[0].id!);
+    let now = 0;
+    let most = 0;
+    vi.mocked(safeFetch).mockImplementation(async (url) => {
+      most = Math.max(most, ++now);
+      await new Promise((r) => setTimeout(r, 2));
+      now--;
+      const path = String(url).replace("https://fix.example", "");
+      const target = path.slice(2, 3);
+      if (path === "/p2-3") throw new Error("down");
+      const body = path === "/p2-4" ? '<div id="root"></div>' : path === "/p3-5" ? "" : `<a href="/target-${target}">x</a>`;
+      return { url: "", status: path === "/p2-6" ? 404 : 200, headers: {}, body, truncated: false, redirects: [], ms: 1 };
+    });
+    const { fixes } = await verifyFixes(scope, ids);
+    expect(most).toBeGreaterThan(1);
+    expect(most).toBeLessThanOrEqual(20);
+    expect(fixes.map((f) => f.live_check)).toEqual([
+      { state: "fixed", saw: "All 20 pages link to /target-1." },
+      { state: "cannot_check", saw: "SEOpen couldn't read /p2-3, /p2-4, /p2-6 without JavaScript or at all, so it can't tell whether they link to /target-2." },
+      { state: "still_there", saw: "19 of 20 pages link to /target-3. Not yet: /p3-5." },
+    ]);
+  });
+
+  it("reports the status of the first linking page it read", async () => {
+    fetched(page("Plans"), 404);
+    const check = (linkedFrom: string[]) => runLiveCheck({ code: "manual-change", url: "https://fix.example/pricing", detail: null, before: null, evidence: { linked_from: linkedFrom } }, "fix.example");
+    expect(await check(["https://elsewhere.example/a", "https://fix.example/b"])).toMatchObject({ state: "cannot_check", status: 404 });
+    expect(await check(["https://elsewhere.example/a"])).toMatchObject({ state: "cannot_check", saw: "SEOpen couldn't read /a without JavaScript or at all, so it can't tell whether it links to /pricing.", status: null });
   });
 
   it("refuses linked_from with more than one page, off the site, or naming the page itself", async () => {
