@@ -6,6 +6,7 @@ import type { ActionResult } from "@/lib/action-result";
 import { OpError, type Actor } from "@/lib/ops";
 import { requireProject } from "@/lib/projects";
 import { projectScope } from "@/lib/workspace";
+import { countFixAction } from "./limit";
 import { dismissFixes, markFixesApplied, recordChanges, reopenFix, verifyFixes } from "./ops";
 
 const fixId = (form: FormData) => {
@@ -14,11 +15,15 @@ const fixId = (form: FormData) => {
   return id;
 };
 
-/** A refusal comes back to the row in plain words; anything else is a real failure. */
-async function act(projectId: number, run: (scope: ReturnType<typeof projectScope>, actor: Actor) => Promise<unknown>): Promise<ActionResult> {
+/**
+ * A refusal comes back to the row in plain words; anything else is a real failure. `counted` is for
+ * the buttons that read live pages: they share a limit per workspace (./limit.ts).
+ */
+async function act(projectId: number, run: (scope: ReturnType<typeof projectScope>, actor: Actor) => Promise<unknown>, { counted = false } = {}): Promise<ActionResult> {
   const user = await requireSession();
   const { project } = await requireProject(projectId);
   try {
+    if (counted) await countFixAction(project.workspaceId);
     await run(projectScope(project), { userId: user.id, source: "app" });
   } catch (err) {
     if (err instanceof OpError) return { error: err.message };
@@ -28,7 +33,7 @@ async function act(projectId: number, run: (scope: ReturnType<typeof projectScop
 }
 
 export async function markAppliedAction(projectId: number, form: FormData): Promise<ActionResult> {
-  return act(projectId, (scope, actor) => markFixesApplied(scope, actor, { ids: [fixId(form)] }));
+  return act(projectId, (scope, actor) => markFixesApplied(scope, actor, { ids: [fixId(form)] }), { counted: true });
 }
 
 export interface CheckNowState {
@@ -44,7 +49,7 @@ export async function verifyAction(projectId: number, _prev: CheckNowState, form
     const { fixes, skipped } = await verifyFixes(scope, [fixId(form)], { again: "use Check now again" });
     if (skipped.length) throw new OpError(skipped[0].why);
     ok = fixes[0] ? `Checked just now. ${fixes[0].next_step}` : "";
-  });
+  }, { counted: true });
   return refused ?? { ok };
 }
 
@@ -76,6 +81,7 @@ export async function logChangeAction(projectId: number, _prev: LogChangeState, 
   if (!urls.length) return { error: "Add at least one page, as a path such as /pricing or a full URL.", fields };
   if (!fields.note) return { error: "Say what changed, in a line.", fields };
   try {
+    await countFixAction(project.workspaceId);
     const res = await recordChanges(projectScope(project), { userId: user.id, source: "app" }, { urls, note: fields.note, expect: fields.expect || null, commit: fields.commit || null });
     refresh();
     const n = res.recorded.length;
