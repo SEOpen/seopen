@@ -1134,6 +1134,13 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       await expect(call(await connect(W.key, "legacy"), "create_project", { domain: "nope.example", confirm: true })).rejects.toThrow(/not found/);
     });
 
+    it("are open-world when they read the live site, and not when they only write here", async () => {
+      const { tools } = await client.listTools();
+      const openWorld = (name: string) => tools.find((t) => t.name === name)?.annotations?.openWorldHint;
+      for (const name of ["mark_fix_applied", "record_change", "verify_fix"]) expect(openWorld(name), name).toBe(true);
+      expect(openWorld("dismiss_fix")).toBe(false);
+    });
+
     it("carry their title in the annotations too", async () => {
       const { tools } = await client.listTools();
       for (const t of tools) {
