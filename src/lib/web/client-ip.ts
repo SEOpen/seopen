@@ -6,23 +6,48 @@
 import net from "node:net";
 
 /**
- * Whether the request's forwarded-address headers can be believed: on Vercel the platform sets
- * them, and a self-hosted copy sets SEOPEN_TRUST_PROXY=1 when it runs behind a reverse proxy that
- * does. Without a proxy (compose.yaml publishes the port straight to the internet) a visitor could
- * write their own and get a fresh quota on every request. On AWS it is `cloudfront` (behindCloudFront).
+ * Which header holds the visitor's address, from SEOPEN_TRUST_PROXY. A proxy writes one of them and
+ * passes the other on as the visitor sent it, so a self-hosted copy names the one its proxy writes:
+ *
+ * - `x-forwarded-for`: the last X-Forwarded-For entry, the one the proxy appended. Caddy's and
+ *   Traefik's defaults, and nginx with `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`.
+ * - `x-real-ip`: X-Real-IP, for a proxy that sets it over what the visitor sent, as nginx does with
+ *   `proxy_set_header X-Real-IP $remote_addr`.
+ * - `cloudfront` (the AWS stack): CloudFront writes CloudFront-Viewer-Address, over anything the
+ *   visitor sent, and the load balancer only admits CloudFront. X-Real-IP is off limits to
+ *   CloudFront Functions and X-Forwarded-For ends in CloudFront's own address, so neither is read.
+ * - `1`, the older setting, and Vercel, which writes both: X-Real-IP, else the last X-Forwarded-For
+ *   entry. Behind a proxy that only appends X-Forwarded-For, a visitor's own X-Real-IP wins, so `1`
+ *   warns once and asks for the header to be named.
+ *
+ * In every named mode a missing header means no address, never a fallback a visitor could write.
+ * Unset, or any other value, nothing is trusted.
  */
-export function trustsProxyHeaders(): boolean {
-  return !!process.env.VERCEL || process.env.SEOPEN_TRUST_PROXY === "1" || behindCloudFront();
+type ProxyMode = "x-forwarded-for" | "x-real-ip" | "cloudfront" | "either";
+
+let warnedEither = false;
+
+function proxyMode(): ProxyMode | null {
+  const value = process.env.SEOPEN_TRUST_PROXY?.trim().toLowerCase();
+  if (value === "x-forwarded-for" || value === "x-real-ip" || value === "cloudfront") return value;
+  if (value === "1") {
+    if (!warnedEither) {
+      warnedEither = true;
+      console.warn("[client-ip] SEOPEN_TRUST_PROXY=1 reads X-Real-IP before X-Forwarded-For. Set it to x-forwarded-for or x-real-ip, whichever your proxy writes (docs/self-hosting.md).");
+    }
+    return "either";
+  }
+  return process.env.VERCEL ? "either" : null;
 }
 
 /**
- * SEOPEN_TRUST_PROXY=cloudfront (the AWS stack): CloudFront writes CloudFront-Viewer-Address, over
- * anything the visitor sent, and the load balancer only admits CloudFront. X-Real-IP is off limits
- * to CloudFront Functions and X-Forwarded-For ends in CloudFront's own address, so in this mode
- * neither is read: a missing header means no address, never a fallback a visitor could write.
+ * Whether the request's forwarded-address headers can be believed: on Vercel the platform sets
+ * them, and a self-hosted copy sets SEOPEN_TRUST_PROXY when it runs behind a reverse proxy that
+ * does (proxyMode). Without a proxy (compose.yaml publishes the port straight to the internet) a
+ * visitor could write their own and get a fresh quota on every request.
  */
-function behindCloudFront(): boolean {
-  return process.env.SEOPEN_TRUST_PROXY === "cloudfront";
+export function trustsProxyHeaders(): boolean {
+  return proxyMode() !== null;
 }
 
 /** "198.51.100.10:46532" or "2001:db8::1:46532": the address, without CloudFront's port. */
@@ -33,15 +58,22 @@ function viewerAddress(value: string | null): string {
 }
 
 /**
- * The visitor's address as the proxy in front reports it: x-real-ip, else the last x-forwarded-for
- * entry, the one that proxy appended (earlier entries are whatever the client sent). Null when the
- * headers can't be trusted, are missing, or don't hold an address.
+ * The visitor's address as the proxy in front reports it, from the header proxyMode names. Of
+ * x-forwarded-for only the last entry counts, the one that proxy appended (earlier entries are
+ * whatever the client sent). Null when the headers can't be trusted, are missing, or don't hold an address.
  */
 export function clientAddress(headers: Headers, trusted = trustsProxyHeaders()): string | null {
   if (!trusted) return null;
-  const raw = behindCloudFront()
-    ? viewerAddress(headers.get("cloudfront-viewer-address"))
-    : (headers.get("x-real-ip") ?? headers.get("x-forwarded-for")?.split(",").at(-1) ?? "");
+  const lastForwarded = () => headers.get("x-forwarded-for")?.split(",").at(-1) ?? "";
+  const mode = proxyMode() ?? "either";
+  const raw =
+    mode === "cloudfront"
+      ? viewerAddress(headers.get("cloudfront-viewer-address"))
+      : mode === "x-forwarded-for"
+        ? lastForwarded()
+        : mode === "x-real-ip"
+          ? (headers.get("x-real-ip") ?? "")
+          : (headers.get("x-real-ip") ?? lastForwarded());
   const ip = raw.trim();
   return net.isIPv4(ip) || net.isIPv6(ip) ? ip : null;
 }

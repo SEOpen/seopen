@@ -74,7 +74,8 @@ services:
       migrate:
         condition: service_completed_successfully
     # Loopback only. To serve it to others, put a reverse proxy (Caddy, nginx) on this machine in front
-    # of 127.0.0.1:4100 for HTTPS, and set SEOPEN_TRUST_PROXY=1 in .env so visitor addresses come from it.
+    # of 127.0.0.1:4100 for HTTPS, and set SEOPEN_TRUST_PROXY in .env to the header it writes
+    # (x-forwarded-for for Caddy; see docs/self-hosting.md) so visitor addresses come from it.
     ports:
       - "127.0.0.1:4100:4100"
     environment:
