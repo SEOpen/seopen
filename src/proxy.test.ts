@@ -226,16 +226,48 @@ describe("split hosts (the app host; next.config.ts handles the site host)", () 
   describe("the analytics relay", () => {
     const sent = (res: Response) => res.headers.get("x-middleware-override-headers")?.split(",") ?? [];
     const to = (res: Response) => res.headers.get("x-middleware-rewrite");
-    const relay = (url: string, headers: Record<string, string> = {}) => proxy(new NextRequest(url, { method: "POST", headers }));
+    const relay = (url: string, headers: Record<string, string> = {}, method = "POST") => proxy(new NextRequest(url, { method, headers }));
     const secrets = { cookie: "better-auth.session_token=abc", authorization: "Bearer abc", "x-edge-to-app-proof": "shared-secret", "user-agent": "test" };
 
     beforeEach(() => vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_test"));
 
-    it("sends events and scripts to PostHog from both hosts, path, slash and query kept", async () => {
+    it("sends events and this copy's config to PostHog from both hosts, path, slash and query kept", async () => {
       expect(to(await relay("https://app.getseopen.com/ingest/flags/?v=2"))).toBe("https://us.i.posthog.com/flags/?v=2");
       expect(to(await relay("https://getseopen.com/ingest/e/"))).toBe("https://us.i.posthog.com/e/");
-      expect(to(await relay("https://getseopen.com/ingest/static/array.js"))).toBe("https://us-assets.i.posthog.com/static/array.js");
-      expect(to(await relay("https://app.getseopen.com/ingest/array/phc_test/config.js"))).toBe("https://us-assets.i.posthog.com/array/phc_test/config.js");
+      expect(to(await relay("https://getseopen.com/ingest/batch/"))).toBe("https://us.i.posthog.com/batch/");
+      expect(to(await relay("https://getseopen.com/ingest/e/?ip=0", {}, "GET"))).toBe("https://us.i.posthog.com/e/?ip=0");
+      expect(to(await relay("https://app.getseopen.com/ingest/array/phc_test/config", {}, "GET"))).toBe("https://us-assets.i.posthog.com/array/phc_test/config");
+      expect(to(await relay("https://app.getseopen.com/ingest/array/phc_test/config.js", {}, "GET"))).toBe("https://us-assets.i.posthog.com/array/phc_test/config.js");
+    });
+
+    it("relays nothing else: other paths, methods and projects get a 404", async () => {
+      const refused: [string, string][] = [
+        ["GET", "https://getseopen.com/ingest/static/array.js"],
+        ["GET", "https://app.getseopen.com/ingest/s/"],
+        ["GET", "https://app.getseopen.com/ingest/some/other/page.html"],
+        ["GET", "https://app.getseopen.com/ingest/e"],
+        ["PUT", "https://app.getseopen.com/ingest/e/"],
+        ["DELETE", "https://app.getseopen.com/ingest/batch/"],
+        ["POST", "https://app.getseopen.com/ingest/array/phc_test/config"],
+        ["GET", "https://app.getseopen.com/ingest/array/phc_someone_else/config"],
+        ["GET", "https://app.getseopen.com/ingest/array/phc_test/config/extra"],
+      ];
+      for (const [method, url] of refused) {
+        const res = await relay(url, secrets, method);
+        expect(res.status, `${method} ${url}`).toBe(404);
+        expect(to(res), `${method} ${url}`).toBeNull();
+      }
+    });
+
+    it("gives PostHog's answer no rights a page would have", async () => {
+      const res = await relay("https://app.getseopen.com/ingest/e/");
+      expect(res.headers.get("content-security-policy")).toBe("sandbox; default-src 'none'; frame-ancestors 'none'");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    });
+
+    it("relays the site's own project config too", async () => {
+      vi.stubEnv("NEXT_PUBLIC_POSTHOG_SITE_KEY", "phc_site");
+      expect(to(await relay("https://getseopen.com/ingest/array/phc_site/config", {}, "GET"))).toBe("https://us-assets.i.posthog.com/array/phc_site/config");
     });
 
     it("passes on only the headers PostHog needs, on both hosts", async () => {

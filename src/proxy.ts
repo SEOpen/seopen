@@ -1,7 +1,7 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
-import { INGEST_PATH, ingestDestination } from "@/lib/analytics/config";
+import { INGEST_PATH, INGEST_RESPONSE_HEADERS, ingestDestination } from "@/lib/analytics/config";
 import { loopbackRedirect } from "@/lib/auth/base-url";
 import { noLoginAllowed } from "@/lib/auth/no-login";
 import { isAuthPage } from "@/lib/auth/redirect";
@@ -121,11 +121,12 @@ const RELAY_HEADERS = new Set([
  * here (/ingest itself, another letter case, analytics off) is a 404 and nothing is sent.
  */
 function relay(request: NextRequest): NextResponse {
-  const destination = ingestDestination(request.nextUrl.pathname, request.nextUrl.search);
+  const destination = ingestDestination(request.nextUrl.pathname, request.nextUrl.search, request.method);
   if (!destination) return new NextResponse(null, { status: 404 });
   const headers = new Headers();
   for (const [name, value] of request.headers) if (RELAY_HEADERS.has(name)) headers.set(name, value);
-  return NextResponse.rewrite(destination, { request: { headers } });
+  // Set on the rewrite, these reach the browser over PostHog's own answer (INGEST_RESPONSE_HEADERS).
+  return NextResponse.rewrite(destination, { request: { headers }, headers: INGEST_RESPONSE_HEADERS });
 }
 
 /**
