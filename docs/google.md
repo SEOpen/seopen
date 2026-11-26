@@ -5,7 +5,7 @@ Researched 2026-10-29 against current Google docs (sources at the end). Scope: t
 **What you need:**
 - A Google Cloud project of your own with the Search Console API, the Analytics Data API and the Analytics Admin API enabled.
 - A Web OAuth client, with its ID and secret in `.env.local` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`).
-- For the Local SEO map, optionally, the Maps Static API in the same project. It needs billing on the project, an API key limited to that API (`GOOGLE_MAPS_STATIC_KEY`) and a URL signing secret (`GOOGLE_MAPS_SIGNING_SECRET`). Without them the map uses OpenStreetMap tiles, which are fine for testing but not for commercial use.
+- For the Local SEO map, optionally, the Maps Static API in the same project. It needs billing on the project, an API key limited to that API (`GOOGLE_MAPS_STATIC_KEY`) and a URL signing secret (`GOOGLE_MAPS_SIGNING_SECRET`). Without them the map uses OpenStreetMap tiles, which are fine for testing but not for commercial use. Each image Google draws is billed, so a suspended workspace's maps use OpenStreetMap too.
 - **Adding sites:** on `/gsc`, map existing projects in the Properties table. Use **Import from Search Console** to tick which unmapped sites become projects, each with a GA4 property (suggested by domain where one matches).
 
 ---

@@ -1,8 +1,9 @@
 import { getCurrentUser } from "@/lib/auth/session";
 import { getCurrentProject } from "@/lib/projects";
 import { projectScope } from "@/lib/workspace";
+import { currentWorkspace } from "@/lib/workspace/current";
 import { getBusinessCheck, loadPoints } from "@/modules/local/queries";
-import { googleStaticMapConfigured, staticMapImage, staticMapView } from "@/modules/local/static-map";
+import { googleStaticMapFor, staticMapImage, staticMapView } from "@/modules/local/static-map";
 import { getBusiness } from "@/modules/local/tracker";
 
 const NO_STORE = { "Cache-Control": "no-store" };
@@ -22,8 +23,8 @@ const id = (v: string | null) => {
  */
 export async function GET(request: Request, { params }: RouteContext<"/local/[businessId]/map">) {
   if (!(await getCurrentUser())) return new Response("Unauthorized", { status: 401, headers: NO_STORE });
-  // Without the Google key and secret the page draws OpenStreetMap and never asks here.
-  if (!googleStaticMapConfigured()) return new Response("Not found", { status: 404, headers: NO_STORE });
+  // Without the Google key and secret, or for a suspended workspace, the page draws OpenStreetMap and never asks here.
+  if (!googleStaticMapFor(await currentWorkspace())) return new Response("Not found", { status: 404, headers: NO_STORE });
 
   const query = new URL(request.url).searchParams;
   const businessId = id((await params).businessId);

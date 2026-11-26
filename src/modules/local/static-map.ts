@@ -33,6 +33,15 @@ export function googleStaticMapConfigured(): boolean {
   return !!process.env.GOOGLE_MAPS_STATIC_KEY && !!process.env.GOOGLE_MAPS_SIGNING_SECRET;
 }
 
+/**
+ * Whether this workspace's maps use the Google base map. Each image Google draws is paid, and a
+ * suspended workspace's paid calls stop, so its maps fall back to OpenStreetMap (CHR-320). The page
+ * and the image route both ask here.
+ */
+export function googleStaticMapFor(workspace: { status: string }): boolean {
+  return googleStaticMapConfigured() && workspace.status !== "suspended";
+}
+
 /** Everything that decides which image Google draws: the cache key for the image's bytes. */
 export interface StaticMapView {
   /** "lat,lng" to six places, as it goes in the URL. */

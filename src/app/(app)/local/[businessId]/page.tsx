@@ -32,7 +32,7 @@ import { HistoryTable, KeywordsTable, type HistoryRow, type KeywordRow } from "@
 import { gridLabel } from "@/modules/local/grid";
 import { avgRank, competitorsAcrossGrid, EMPTY_STATS, foundLabel, rankChange, top3Share, type KeywordStats } from "@/modules/local/metrics";
 import { checkStats, listChecks, listKeywords, loadPoints, previousFor, withResults, type LocalKeyword } from "@/modules/local/queries";
-import { googleStaticMapConfigured, staticMapHref } from "@/modules/local/static-map";
+import { googleStaticMapFor, staticMapHref } from "@/modules/local/static-map";
 import { CHECK_EVERY_DAYS, getBusiness, type LocalBusiness, type LocalCheck } from "@/modules/local/tracker";
 
 export const metadata = { title: "Local SEO" };
@@ -163,7 +163,7 @@ export default async function LocalBusinessPage({ params, searchParams }: PagePr
                 gridSize={check.gridSize}
                 ours={ours}
                 title={business.title}
-                googleMap={googleStaticMapConfigured() && keyword ? staticMapHref(business.id, check.id, keyword.id) : null}
+                googleMap={googleStaticMapFor(ws) && keyword ? staticMapHref(business.id, check.id, keyword.id) : null}
               />
             ) : (
               <p className="text-sm text-secondary">
