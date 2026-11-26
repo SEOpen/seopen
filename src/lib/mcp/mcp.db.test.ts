@@ -2163,4 +2163,34 @@ describe.skipIf(!ready)("MCP endpoint", () => {
     expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(0);
     expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/120 requests a minute/);
   });
+
+  it("counts every message of a 2025-era batch, and refuses one that would pass the limit before any of it runs", async () => {
+    const W4 = await seedWorkspace("mcpbatch");
+    const [row] = await db.select({ id: s.apiKeys.id }).from(s.apiKeys).where(eq(s.apiKeys.workspaceId, W4.ws.id));
+    const { LIMITS } = await import("./limits");
+    const minute = LIMITS.requests.windowMs;
+    if (minute - (Date.now() % minute) < 3000) await new Promise((r) => setTimeout(r, 3500));
+    const used = async () =>
+      (await db.select({ count: s.apiKeyUsage.count }).from(s.apiKeyUsage).where(and(eq(s.apiKeyUsage.keyId, row.id), eq(s.apiKeyUsage.bucket, "requests")))).reduce((n, r) => n + r.count, 0);
+    const legacy = { authorization: `Bearer ${W4.key}`, "mcp-protocol-version": "2025-03-26" };
+    const batch = (n: number) => Array.from({ length: n }, (_, i) => ({ jsonrpc: "2.0", id: i + 1, method: "tools/call", params: { name: "list_projects", arguments: {} } }));
+
+    const three = await POST(new Request(URL_, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...legacy }, body: JSON.stringify(batch(3)) }));
+    expect(three.status).toBe(200);
+    // All three ran, and the minute's count went up by three.
+    expect((await three.text()).match(/"result"/g)).toHaveLength(3);
+    expect(await used()).toBe(3);
+
+    // 3 + 100 is within the minute's 120; 20 more is not, so that batch is refused whole.
+    const hundred = await POST(new Request(URL_, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...legacy }, body: JSON.stringify(batch(100)) }));
+    expect(hundred.status).toBe(200);
+    expect(await used()).toBe(103);
+    const over = await POST(new Request(URL_, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...legacy }, body: JSON.stringify(batch(20)) }));
+    expect(over.status).toBe(429);
+    expect(((await over.json()) as { error: { message: string } }).error.message).toMatch(/120 requests a minute/);
+
+    // A single request still counts one, and a body that isn't JSON is the SDK's to answer.
+    const junk = await POST(new Request(URL_, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...legacy }, body: "{not json" }));
+    expect(junk.status).not.toBe(200);
+  });
 });

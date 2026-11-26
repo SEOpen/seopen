@@ -22,8 +22,8 @@ export type LimitBucket = keyof typeof LIMITS;
 
 export type LimitResult = { ok: true } | { ok: false; retryAfterS: number; message: string };
 
-/** Counts one use of `bucket` for the key or connection and says whether it was within the limit. */
-export async function consumeLimit(principal: Pick<Principal, "via" | "workspaceId">, bucket: LimitBucket, now = new Date()): Promise<LimitResult> {
+/** Counts `amount` uses of `bucket` (one by default) for the key or connection and says whether they were within the limit. */
+export async function consumeLimit(principal: Pick<Principal, "via" | "workspaceId">, bucket: LimitBucket, now = new Date(), amount = 1): Promise<LimitResult> {
   const { max, windowMs, what } = LIMITS[bucket];
   const windowStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
   const { via, workspaceId } = principal;
@@ -31,15 +31,15 @@ export async function consumeLimit(principal: Pick<Principal, "via" | "workspace
     via.kind === "key"
       ? await db
           .insert(apiKeyUsage)
-          .values({ keyId: via.keyId, workspaceId, bucket, windowStart, count: 1 })
-          .onConflictDoUpdate({ target: [apiKeyUsage.keyId, apiKeyUsage.bucket, apiKeyUsage.windowStart], set: { count: sql`${apiKeyUsage.count} + 1` } })
+          .values({ keyId: via.keyId, workspaceId, bucket, windowStart, count: amount })
+          .onConflictDoUpdate({ target: [apiKeyUsage.keyId, apiKeyUsage.bucket, apiKeyUsage.windowStart], set: { count: sql`${apiKeyUsage.count} + ${amount}` } })
           .returning({ count: apiKeyUsage.count })
       : await db
           .insert(oauthConnectionUsage)
-          .values({ connectionId: via.connectionId, workspaceId, bucket, windowStart, count: 1 })
+          .values({ connectionId: via.connectionId, workspaceId, bucket, windowStart, count: amount })
           .onConflictDoUpdate({
             target: [oauthConnectionUsage.connectionId, oauthConnectionUsage.bucket, oauthConnectionUsage.windowStart],
-            set: { count: sql`${oauthConnectionUsage.count} + 1` },
+            set: { count: sql`${oauthConnectionUsage.count} + ${amount}` },
           })
           .returning({ count: oauthConnectionUsage.count });
   if (row.count <= max) return { ok: true };

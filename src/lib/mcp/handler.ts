@@ -83,13 +83,54 @@ export async function handleMcp(request: Request): Promise<Response> {
   if (rejected) return rejected;
   const auth = await authenticate(request);
   if (auth instanceof Response) return auth;
-  const limit = await consumeLimit(auth.extra!.principal as Principal, "requests");
+  const principal = auth.extra!.principal as Principal;
+  const limit = await consumeLimit(principal, "requests");
   if (!limit.ok) return tooManyRequests(limit.retryAfterS, limit.message);
   // A 2026 request must name its method in this header, and the SDK refuses one that disagrees with its body.
   if (request.headers.get("mcp-method") === "subscriptions/listen") return listenRefused(request);
-  const res = await mcp.fetch(request, { authInfo: auth });
+  // A 2025-era POST may carry a JSON-RPC batch, and the SDK runs every message in it. The limit counts
+  // what runs, so the messages after the first are counted here before any of them starts.
+  const body = await readJson(request);
+  const extra = Array.isArray(body) && body.length <= MAX_BATCH ? body.length - 1 : 0;
+  if (extra > 0) {
+    const more = await consumeLimit(principal, "requests", new Date(), extra);
+    if (!more.ok) return tooManyRequests(more.retryAfterS, more.message);
+  }
+  const res = await mcp.fetch(request, { authInfo: auth, ...(body !== undefined && { parsedBody: body }) });
   res.headers.set("Cache-Control", "no-store");
   return res;
+}
+
+/** The most messages the SDK takes in one batch; it refuses a longer one without running any. */
+const MAX_BATCH = 100;
+
+/** The SDK's own limit on a request body (4 MiB). A body over it is left for the SDK to refuse. */
+const MAX_BODY = 4 * 1024 * 1024;
+
+/**
+ * The POST body as JSON, read from a copy so the SDK still gets the request as it came, or undefined
+ * when it is missing, over MAX_BODY or not JSON. Those are left for the SDK to answer in its own words.
+ */
+async function readJson(request: Request): Promise<unknown> {
+  if (request.method !== "POST" || !request.body) return undefined;
+  const reader = request.clone().body!.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY) {
+      await reader.cancel().catch(() => {});
+      return undefined;
+    }
+    chunks.push(value);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return undefined;
+  }
 }
 
 /** Word for word how the SDK answers a method the server doesn't have, so a client treats it as any unsupported method. */
