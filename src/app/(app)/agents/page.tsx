@@ -85,7 +85,7 @@ export default async function AgentsPage() {
       <Card className={cn("max-w-2xl", (activeKeys.length > 0 || apps.length > 0) && "mt-8")}>
         <CardHeader
           title="Connect an app"
-          description="Add SEOpen as a custom connector in Claude, ChatGPT or any app that supports remote MCP servers, using this address. The app sends you here to sign in and choose what it may do, with the same choices a key has."
+          description="Add SEOpen as a custom connector in Claude, a custom MCP server in ChatGPT, or in any app that supports remote MCP servers, using this address. The app sends you here to sign in and choose what it may do, with the same choices a key has."
         />
         <CardBody>
           <code className="block rounded-sm bg-surface-2 px-2 py-1 font-mono text-xs break-all">{endpoint}</code>
