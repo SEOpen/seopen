@@ -13,7 +13,7 @@ import { serpTarget } from "@/lib/dataforseo/serp-target";
 import { OpError, refused, type Actor, type OpOptions } from "@/lib/ops";
 import { inScope, workspaceTimeZone, type ProjectScope } from "@/lib/workspace";
 import { todayIn } from "@/modules/google/windowing";
-import { load, type Loaded } from "@/modules/keywords/dfs";
+import { load, type DfsSpec, type Loaded } from "@/modules/keywords/dfs";
 import { rules } from "@/plan-policy/rules";
 import { hasSearchOperators } from "@/modules/keywords/lookup-quote";
 import { MAX_KEYWORD_LENGTH, type Market } from "@/modules/keywords/requests";
@@ -137,13 +137,15 @@ export async function createBriefOp(scope: ProjectScope, actor: Actor, input: Cr
   if (opts.dryRun) return { state: "preview", credits, keyword, pageType: input.pageType, ...subjects, merged, message: `Would create ${what}. It costs ${price}.` };
   if (credits > (opts.maxCredits ?? 0)) return { state: "needs_credits", credits, message: `Creating ${what} costs ${rules.creditsText(credits)}.` };
 
-  const run = { run: true, workspaceId: scope.workspaceId, projectId: scope.projectId };
+  // Only the lookups the price covered may be bought. One that was saved when the price was worked
+  // out and has gone since comes back idle, and the brief asks for its price instead of paying it.
+  const run = (spec: DfsSpec) => ({ run: plan.unpaid.includes(spec), workspaceId: scope.workspaceId, projectId: scope.projectId });
   const specs = [plan.overview, plan.merged, plan.serp, plan.questions];
   const settled = await Promise.allSettled([
-    load<KeywordOverviewResult>(plan.overview, run),
-    plan.merged ? load<KeywordOverviewResult>(plan.merged, run) : null,
-    load<SerpResult>(plan.serp, run),
-    load<SuggestionsResult>(plan.questions, run),
+    load<KeywordOverviewResult>(plan.overview, run(plan.overview)),
+    plan.merged ? load<KeywordOverviewResult>(plan.merged, run(plan.merged)) : null,
+    load<SerpResult>(plan.serp, run(plan.serp)),
+    load<SuggestionsResult>(plan.questions, run(plan.questions)),
   ]);
   const paidFor = (l: Loaded<unknown> | null, i: number) => (l && l.state === "ready" && !l.cached ? (specs[i]?.estUsd ?? 0) : 0);
   const failed = settled.find((r) => r.status === "rejected");
@@ -158,6 +160,8 @@ export async function createBriefOp(scope: ProjectScope, actor: Actor, input: Cr
     Loaded<SerpResult>,
     Loaded<SuggestionsResult>,
   ];
+  const goneUsd = [overview, mergedRes, serp, questions].reduce((sum, l) => sum + (l?.state === "idle" ? l.estUsd : 0), 0);
+  if (goneUsd > 0) return { state: "needs_credits", credits: creditsFor(goneUsd), message: `Creating ${what} costs ${rules.creditsText(creditsFor(goneUsd))} more: a saved lookup it counted on has expired.` };
   const spentUsd = [overview, mergedRes, serp, questions].reduce((sum, l, i) => sum + paidFor(l, i), 0);
 
   const serpResult = (ready(serp)?.results[0] as SerpResult | undefined) ?? null;

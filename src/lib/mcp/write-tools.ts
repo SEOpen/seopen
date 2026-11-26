@@ -301,7 +301,8 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
           return priced({ name: quote.name, city: quote.city, price: { credits: quote.price.credits }, ...usdOf(quote.price.usd), message: quote.message }, spends);
         }
         if (!quote.cached) await counted();
-        const res = await findListingsOp(scope, args);
+        // Quoted nothing because the search was saved: read that saved search, and never buy one.
+        const res = await findListingsOp(scope, args, { savedSearchOnly: quote.cached });
         // A listing whose website is another site is likely another business: say so before it's tracked.
         const own = normalizeDomain(row.domain);
         const sameSite = (d: string | null) => {
@@ -642,7 +643,8 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
         if (quote.credits > 0 && !spends) refuseSpend();
         if ((args.max_credits ?? 0) < quote.credits) return priced({ ...summary, message: quote.message, price: { credits: quote.credits } }, spends);
         await counted();
-        const res = await createBriefOp(scope, actor, input, { maxCredits: args.max_credits ?? 0 });
+        // A key that can't spend covers no price, whatever max_credits it sent.
+        const res = await createBriefOp(scope, actor, input, { maxCredits: spends ? (args.max_credits ?? 0) : 0 });
         if (res.state === "needs_credits") return priced({ ...summary, message: `${res.message} The price changed since the quote.`, price: { credits: res.credits } }, spends);
         if (res.state !== "created") throw new ToolError(res.message);
         return { brief_id: res.id, credits: res.credits, message: res.message, next: "Read it with get_content_brief, and ask the user for what's under To fill." };

@@ -82,20 +82,28 @@ export interface FoundListings {
   message: string;
 }
 
-/** Step 1 of adding a business: look it up on Google Maps and offer the listings found. */
-export async function findListingsOp(scope: ProjectScope, input: { name: string; city: string }, opts: OpOptions = {}): Promise<FoundListings> {
+/**
+ * Step 1 of adding a business: look it up on Google Maps and offer the listings found.
+ *
+ * `savedSearchOnly` is for a caller that was quoted nothing because the search was saved (the MCP
+ * tool): the listings come from that saved search or not at all, so a search that expired since
+ * the quote is never bought without a price.
+ */
+export async function findListingsOp(scope: ProjectScope, input: { name: string; city: string }, opts: OpOptions & { savedSearchOnly?: boolean } = {}): Promise<FoundListings> {
   const name = clean(input.name);
   const city = clean(input.city);
   if (!name || !city) throw new OpError("Enter the business name and its city.");
   const refusal = await projectActionRefusal(scope, { paid: true, research: true, quiet: opts.dryRun });
   if (refusal) throw refused(refusal);
-  const cached = (await peekCache(scope.workspaceId, "POST", MAPS_SEARCH, await searchTasks(scope, name, city), TTL.day)) !== null;
+  const saved = await peekCache<MapsResult>(scope.workspaceId, "POST", MAPS_SEARCH, await searchTasks(scope, name, city), TTL.day);
+  const cached = saved !== null;
   const price = cached ? { credits: 0, usd: null } : await priceOf(scope, SEARCH_PRICE_USD);
   if (opts.dryRun) {
     const cost = cached ? "free (searched in the last day)" : `≈ ${rules.creditsText(price.credits)}`;
     return { dryRun: true, name, city, cached, price, candidates: [], message: `Would search Google Maps for “${name}” in ${city}: ${cost}.` };
   }
-  const candidates = await searchMaps(scope, name, city).catch(spendMessage);
+  if (opts.savedSearchOnly && !saved) throw new OpError(SEARCH_NOT_SAVED);
+  const candidates = opts.savedSearchOnly ? parseCandidates(saved?.response.tasks?.[0]?.result?.[0]) : await searchMaps(scope, name, city).catch(spendMessage);
   const message = candidates.length
     ? `Found ${plural(candidates.length, "listing")} for “${name}” in ${city}.`
     : `Google Maps found no listing for “${name}” in ${city}. Check the spelling, or try the name exactly as it appears on Maps.`;

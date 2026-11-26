@@ -72,10 +72,19 @@ export function loadOnce<R>(spec: DfsSpec, opts: LoadOpts): Promise<Loaded<R>> {
   return loadMemo(stableStringify(spec), opts.run, opts.workspaceId, opts.projectId ?? null) as Promise<Loaded<R>>;
 }
 
+/**
+ * The specs that aren't free for this workspace yet: the ones a price covers. A caller that prices
+ * a lookup and then runs it passes `run` for these alone, so a saved answer that goes between the
+ * two is never bought at a price nobody was shown.
+ */
+export async function pendingSpecs(specs: DfsSpec[], workspaceId: number): Promise<DfsSpec[]> {
+  const hits = await Promise.all(specs.map((s) => peek(s, workspaceId)));
+  return specs.filter((_, i) => !hits[i]);
+}
+
 /** Sum of estimated costs for the specs that aren't free for this workspace yet. */
 export async function pendingCost(specs: DfsSpec[], workspaceId: number): Promise<number> {
-  const hits = await Promise.all(specs.map((s) => peek(s, workspaceId)));
-  return specs.reduce((sum, s, i) => (hits[i] ? sum : sum + s.estUsd), 0);
+  return (await pendingSpecs(specs, workspaceId)).reduce((sum, s) => sum + s.estUsd, 0);
 }
 
 export type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
