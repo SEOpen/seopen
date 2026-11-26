@@ -297,7 +297,7 @@ describe.skipIf(!ready)("how an account signs in", () => {
 
     expect((await post("/request-password-reset", "", { email: user.email, redirectTo: "/reset-password" })).status).toBe(200);
     await vi.waitFor(() => expect(sent.some((m) => m.to === user.email)).toBe(true));
-    const token = sent.find((m) => m.to === user.email)?.text.match(/reset-password\/([\w-]+)/)?.[1];
+    const token = sent.find((m) => m.to === user.email)?.text.match(/reset-password\?token=([\w-]+)/)?.[1];
     const newPassword = `new-${randomUUID()}`;
     expect((await post("/reset-password", "", { newPassword, token })).status).toBe(200);
     expect(await signInMethods(user.id)).toEqual({ password: true, google: true });
