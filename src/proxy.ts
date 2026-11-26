@@ -1,6 +1,7 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
+import { INGEST_PATH, ingestDestination } from "@/lib/analytics/config";
 import { loopbackRedirect } from "@/lib/auth/base-url";
 import { noLoginAllowed } from "@/lib/auth/no-login";
 import { isAuthPage } from "@/lib/auth/redirect";
@@ -25,7 +26,7 @@ export async function proxy(request: NextRequest) {
   if (loopback) return NextResponse.redirect(loopback, 307);
 
   // /ingest only relays analytics to PostHog, on either host; the last events of a session can land after sign-out.
-  if (pathname.startsWith("/ingest/")) return relay(request);
+  if (pathname === INGEST_PATH || pathname.startsWith(`${INGEST_PATH}/`)) return relay(request);
 
   // Only if the matcher's host check is skipped: next.config.ts has already routed this request.
   if (hosts && hostname === hosts.site) return NextResponse.next();
@@ -109,16 +110,19 @@ const RELAY_HEADERS = new Set([
 ]);
 
 /**
- * The /ingest rewrite (next.config.ts) forwards the browser's request to PostHog, a service outside
- * this one, and would send every header along. The browser adds our cookies, the HttpOnly session
- * among them, since /ingest is on our own host, and a load balancer or CDN in front of the app may
- * add headers meant for the app alone, such as the one it proves itself with. So only the headers
- * PostHog needs go on; a header nobody listed stays here.
+ * Sends a request under /ingest on to PostHog, a service outside this one. The browser adds our
+ * cookies, the HttpOnly session among them, since /ingest is on our own host, and a load balancer
+ * or CDN in front of the app may add headers meant for the app alone, such as the one it proves
+ * itself with. So only the headers PostHog needs go on; a header nobody listed stays here. This is
+ * the only way to PostHog: next.config.ts has no rewrite for /ingest, so a path that isn't relayed
+ * here (/ingest itself, another letter case, analytics off) is a 404 and nothing is sent.
  */
 function relay(request: NextRequest): NextResponse {
+  const destination = ingestDestination(request.nextUrl.pathname, request.nextUrl.search);
+  if (!destination) return new NextResponse(null, { status: 404 });
   const headers = new Headers();
   for (const [name, value] of request.headers) if (RELAY_HEADERS.has(name)) headers.set(name, value);
-  return NextResponse.next({ request: { headers } });
+  return NextResponse.rewrite(destination, { request: { headers } });
 }
 
 /**
@@ -155,7 +159,7 @@ export const config = {
       // The marketing host is served straight from the CDN. Matcher values must be literals.
       missing: [{ type: "host", value: "getseopen\\.com" }],
     },
-    // The analytics relay runs here on every host, so its headers are trimmed there too.
+    // The analytics relay runs here on every host: this is the only way from /ingest to PostHog.
     "/ingest/:path*",
   ],
 };

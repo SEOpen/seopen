@@ -1,6 +1,5 @@
 import createMDX from "@next/mdx";
 import type { NextConfig } from "next";
-import { ingestRewrites } from "./src/lib/analytics/config";
 import { adminExtraFile } from "./src/components/shell/admin-extra-file";
 import { planPolicyAliases } from "./src/lib/billing/policy-file";
 import { billingProviderFile } from "./src/lib/billing/provider-file";
@@ -37,7 +36,7 @@ const nextConfig: NextConfig = {
     return [
       trailingSlash,
       // The site host only serves the marketing site: app paths move to the app host with their query.
-      // /ingest stays: the site's own PostHog relays through it (rewrites, below).
+      // /ingest stays: the site's own PostHog relays through it (src/proxy.ts).
       ...APP_PREFIXES.filter((prefix) => prefix !== "/ingest").flatMap((prefix) => [
         { source: prefix, has: onSite, destination: `https://${hosts.app}${prefix}`, permanent: true },
         { source: `${prefix}/:path*`, has: onSite, destination: `https://${hosts.app}${prefix}/:path*`, permanent: true },
@@ -50,10 +49,9 @@ const nextConfig: NextConfig = {
     return {
       // The marketing home lives at /landing because the app's dashboard owns /.
       beforeFiles: hosts ? [{ source: "/", has: [{ type: "host" as const, value: escape(hosts.site) }], destination: "/landing" }] : [],
-      // PostHog's reverse proxy (src/lib/analytics/config.ts), on both hosts: the app's PostHog and
-      // the site's cookieless one each send to /ingest on their own host. src/proxy.ts runs for
-      // /ingest on both and passes on only the headers PostHog needs.
-      afterFiles: ingestRewrites(),
+      // No rewrite for /ingest here: src/proxy.ts relays it to PostHog itself, with the headers it
+      // chose, so a path the proxy doesn't answer has no second way out.
+      afterFiles: [],
       fallback: [],
     };
   },
