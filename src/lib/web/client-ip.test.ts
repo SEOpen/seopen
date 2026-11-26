@@ -29,10 +29,10 @@ describe("clientAddress", () => {
     expect(clientAddress(h({ "x-forwarded-for": "203.0.113.9" }))).toBeNull();
   });
 
-  it("keeps the older `1` reading X-Real-IP, then the last X-Forwarded-For entry", () => {
+  it("reads `1`, the older setting, as x-forwarded-for", () => {
     vi.stubEnv("SEOPEN_TRUST_PROXY", "1");
-    expect(clientAddress(h({ "x-real-ip": "198.51.100.10", "x-forwarded-for": "203.0.113.9" }))).toBe("198.51.100.10");
-    expect(clientAddress(h({ "x-forwarded-for": "192.0.2.50, 203.0.113.9" }))).toBe("203.0.113.9");
+    expect(clientAddress(h({ "x-real-ip": "203.0.113.9", "x-forwarded-for": "192.0.2.50, 198.51.100.10" }))).toBe("198.51.100.10");
+    expect(clientAddress(h({ "x-real-ip": "203.0.113.9" }))).toBeNull();
   });
 
   it("trusts nothing when unset or set to something it doesn't know", () => {
