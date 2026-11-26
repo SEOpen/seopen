@@ -69,8 +69,8 @@ To see why the mode is off for you, open `/api/auth/local-sign-in` in the browse
   worker each hold their own pool plus a few for the job queue, so keep their sum well under
   Postgres's `max_connections` (100 by default).
 - `MIGRATE_ON_START=1` on the worker applies new `drizzle/` migrations when it starts. The Docker
-  compose file doesn't use it: its `migrate` service runs `pnpm db:migrate:start` and exits before
-  the web app and the worker start.
+  compose file doesn't use it: its `migrate` service runs `scripts/migrate.ts` (what `pnpm db:migrate:start`
+  runs) and exits before the web app and the worker start.
 
 ## Backups
 

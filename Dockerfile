@@ -1,10 +1,10 @@
 # One image for both processes: the web app (the default command) and the job worker
-# (`pnpm worker:start`). compose.yaml runs both beside Postgres.
+# (`src/worker.ts`). compose.yaml runs both beside Postgres.
 #
 #   docker build -t seopen .
 #   docker run --env-file .env -p 127.0.0.1:4100:4100 seopen     # web, this machine only
-#   docker run --env-file .env seopen pnpm db:migrate:start                # migrations, then exits
-#   docker run --env-file .env seopen pnpm worker:start
+#   docker run --env-file .env seopen node --import tsx scripts/migrate.ts   # migrations, then exits
+#   docker run --env-file .env seopen node --import tsx src/worker.ts
 
 FROM node:24-bookworm-slim AS base
 ENV NEXT_TELEMETRY_DISABLED=1
