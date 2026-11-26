@@ -106,7 +106,7 @@ export async function ConnectionPanel({ connection, sp }: { connection: Connecti
         )}
         {connection.state === "not_configured" && (
           <Callout tone="warn" title="OAuth client missing">
-            Add a Google OAuth client to GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the env file, then restart SEOpen. docs/google.md has the steps.
+            Add a Google OAuth client to GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the env file, then restart SEOpen (in Docker: docker compose up -d). docs/google.md has the steps.
           </Callout>
         )}
         {connection.state === "not_connected" && (
