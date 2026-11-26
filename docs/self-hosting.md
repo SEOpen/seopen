@@ -66,6 +66,30 @@ To see why the mode is off for you, open `/api/auth/local-sign-in` in the browse
   compose file doesn't use it: its `migrate` service runs `pnpm db:migrate:start` and exits before
   the web app and the worker start.
 
+## Backups
+
+Everything SEOpen keeps is in its Postgres database: in Docker, the `pgdata` volume.
+`docker compose down -v` deletes that volume, so leave out `-v` unless you mean to.
+
+Back it up while it runs, from the folder with `compose.yaml`:
+
+```bash
+docker compose exec -T postgres pg_dump -U seopen -d seopen -Fc > seopen-$(date +%F).dump
+```
+
+To restore one, stop the web app and the worker, restore, then start everything again. The restore
+replaces what the database holds with what the backup holds:
+
+```bash
+docker compose stop web worker
+docker compose exec -T postgres pg_restore -U seopen -d seopen --clean --if-exists --no-owner < seopen-2026-11-26.dump
+docker compose up -d
+```
+
+Keep backups on another machine, and keep a copy of `.env` with them. `SEOPEN_SECRET_KEY` encrypts
+the stored Google tokens, so a database restored without the same key has to connect Google again.
+Back up before every update, since an update can apply migrations that change the database.
+
 ## Accounts
 
 - `BETTER_AUTH_SECRET`: optional. Unset, it's derived from `SEOPEN_SECRET_KEY`. Changing either
