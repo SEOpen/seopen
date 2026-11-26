@@ -50,8 +50,8 @@ Set up SEOpen to run on this machine. Only the app itself: don't add any sites,
 projects, keywords or tracking.
 
 1. Read README.md and .env.example first.
-2. Check for Node 24, pnpm 9 and Postgres 17, or for Docker with Compose. If
-   something is missing, tell me how to install it on my OS and wait. Don't
+2. Check for Node 24, pnpm 9 and Postgres 17, or for Docker with Compose 2.24
+   or later. If something is missing, tell me how to install it on my OS and wait. Don't
    install system software yourself.
 3. With pnpm and Postgres: run pnpm install, create the databases seopen and
    seopen_test, copy .env.example to .env.local, set SEOPEN_SECRET_KEY to the
@@ -63,17 +63,21 @@ projects, keywords or tracking.
    https://app.dataforseo.com/api-access) into DATAFORSEO_LOGIN and
    DATAFORSEO_PASSWORD in the env file myself. If I have no account, say I can
    make one at https://try.dataforseo.com/65m65rikt8ny, or leave them empty
-   for now: research pages won't run until they're set.
+   for now: research pages won't run until they're set. With Docker, say a
+   change to the env file takes effect after docker compose up -d (a plain
+   docker compose restart keeps the old settings).
 5. Don't make an account. .env.example sets SEOPEN_NO_LOGIN=1, so on this
    machine the app opens without a password (README.md, "Signing in"). Leave
    it on.
 6. Without Docker, start pnpm dev in the background. Check that
    http://127.0.0.1:4100 opens the app without asking for a password. If it
    shows a sign-in page, read the reason at
-   http://127.0.0.1:4100/api/auth/local-sign-in and tell me. Don't start the
-   worker (pnpm worker:dev):
-   it runs paid DataForSEO jobs on a schedule. Tell me how to start it and
-   let me decide.
+   http://127.0.0.1:4100/api/auth/local-sign-in and tell me.
+   Without Docker, don't start the worker (pnpm worker:dev): it runs paid
+   DataForSEO jobs on a schedule. Tell me how to start it and let me decide.
+   With Docker, the worker already runs with the app. Tell me it spends
+   nothing while the DataForSEO login is empty, runs paid jobs on a schedule
+   once it's set, and that docker compose stop stops it with everything else.
 7. Finish with what you set up, which settings in the env file are still
    empty, and what each would turn on.
 ```
