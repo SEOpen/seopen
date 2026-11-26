@@ -254,6 +254,8 @@ function requestOnce(url: URL, opts: RequestOptions, deadline: number): Promise<
             size = opts.maxBytes;
             truncated = true;
             res.destroy();
+            // The decompressor too: left alone it inflates everything it was already given.
+            if (stream !== res) stream.destroy();
             finish();
             return;
           }
@@ -262,6 +264,8 @@ function requestOnce(url: URL, opts: RequestOptions, deadline: number): Promise<
         });
         stream.on("end", () => !truncated && finish());
         stream.on("error", (err) => (truncated ? undefined : reject(err)));
+        // The deadline or a request error drops the response as well, and its decompressor with it.
+        if (stream !== res) req.once("error", () => stream.destroy());
       },
     );
     req.on("timeout", () => req.destroy(Object.assign(new Error("timed out"), { code: "ETIMEDOUT" })));
