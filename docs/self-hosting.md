@@ -62,6 +62,12 @@ To see why the mode is off for you, open `/api/auth/local-sign-in` in the browse
   server's website.
 - `DATABASE_CA_CERT`: managed Postgres only, the provider's CA certificate as PEM text or a file
   path. Leave it empty for a local or Docker database.
+- `DATABASE_POOL_MAX`: how many database connections each process holds, 5 by default (1 to 100).
+  Every request in the web app shares them, and a page that runs more queries at once than there
+  are connections waits, along with everyone else's. On a long-running server with a database that
+  has room, 10 to 20 for the web app keeps one heavy request from slowing the rest. The web app and
+  worker each hold their own pool plus a few for the job queue, so keep their sum well under
+  Postgres's `max_connections` (100 by default).
 - `MIGRATE_ON_START=1` on the worker applies new `drizzle/` migrations when it starts. The Docker
   compose file doesn't use it: its `migrate` service runs `pnpm db:migrate:start` and exits before
   the web app and the worker start.
