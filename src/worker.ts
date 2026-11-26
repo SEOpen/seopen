@@ -21,6 +21,14 @@ async function main() {
 
   const boss = new PgBoss({ connectionString: process.env.DATABASE_URL!, ssl: dbSsl(), max: 5, schema: "pgboss" });
   boss.on("error", (err) => console.error("[worker] pg-boss error", err));
+  // Otherwise kept only in pg-boss's own table. Among them: a handler still running past its job's
+  // expireInSeconds, whose job pg-boss has failed while this worker waits for it to return. Only these
+  // fields: a slow-query warning also carries the query's values, which can be a job's payload.
+  boss.on("warning", ({ message, data }) => {
+    const d = (data ?? {}) as Record<string, unknown>;
+    const { type, queue, jobs, expireInSeconds, elapsed } = d;
+    console.warn("[worker] pg-boss warning", message, JSON.stringify({ type, queue, jobs, expireInSeconds, elapsed }));
+  });
   await boss.start();
 
   const allJobs = await loadJobs();
