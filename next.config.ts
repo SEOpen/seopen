@@ -51,9 +51,8 @@ const nextConfig: NextConfig = {
       // The marketing home lives at /landing because the app's dashboard owns /.
       beforeFiles: hosts ? [{ source: "/", has: [{ type: "host" as const, value: escape(hosts.site) }], destination: "/landing" }] : [],
       // PostHog's reverse proxy (src/lib/analytics/config.ts), on both hosts: the app's PostHog and
-      // the site's cookieless one each send to /ingest on their own host. The site host skips
-      // src/proxy.ts, so its requests keep their cookies on the way to PostHog; the only cookie
-      // there is the theme choice.
+      // the site's cookieless one each send to /ingest on their own host. src/proxy.ts runs for
+      // /ingest on both and passes on only the headers PostHog needs.
       afterFiles: ingestRewrites(),
       fallback: [],
     };
