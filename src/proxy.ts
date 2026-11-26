@@ -11,7 +11,7 @@ import { withClientIpHeader } from "@/lib/web/client-ip";
 
 /**
  * The sign-in gate, plus the app host's half of the host split (src/lib/hosts.ts). The site host
- * reaches here only for the analytics relay: the matcher skips the rest, and next.config.ts redirects its app paths. Every
+ * reaches here only for the analytics relay and /api/auth: the matcher skips the rest, and next.config.ts redirects its app paths. Every
  * app page, API route and Server Action needs a Better Auth session. The proxy runs on Node, so
  * it checks the session for real, against its row, so a session ended anywhere is refused at once.
  * Better Auth is imported only when a session cookie needs checking.
@@ -27,6 +27,11 @@ export async function proxy(request: NextRequest) {
 
   // /ingest only relays analytics to PostHog, on either host; the last events of a session can land after sign-out.
   if (pathname === INGEST_PATH || pathname.startsWith(`${INGEST_PATH}/`)) return relay(request);
+
+  // Better Auth rate-limits by the address in CLIENT_IP_HEADER, which only this sets (src/lib/web/client-ip.ts).
+  // On every host, and above the site host's way out: a request that names the site host to a copy
+  // with one host would otherwise bring its own address for the limits to count by.
+  if (pathname.startsWith("/api/auth/")) return NextResponse.next({ request: { headers: withClientIpHeader(request.headers) } });
 
   // Only if the matcher's host check is skipped: next.config.ts has already routed this request.
   if (hosts && hostname === hosts.site) return NextResponse.next();
@@ -45,8 +50,6 @@ export async function proxy(request: NextRequest) {
   // No-login mode (src/lib/auth/no-login.ts): sign-in has nothing to ask, so it signs the owner in.
   if (pathname === "/sign-in" && noLoginAllowed(request.headers)) return localSignIn(request, request.nextUrl.searchParams.get("next"));
 
-  // Better Auth rate-limits by the address in CLIENT_IP_HEADER, which only this sets (src/lib/web/client-ip.ts).
-  if (pathname.startsWith("/api/auth/")) return NextResponse.next({ request: { headers: withClientIpHeader(request.headers) } });
   // One host (local, previews): everything but the app is the public marketing site.
   if ((pathname !== "/" && !isAppPath(pathname)) || isAuthPage(pathname)) return NextResponse.next();
   // Stripe's webhook signs its own requests; checkout sends a signed-out visitor to sign-in itself.
@@ -161,5 +164,7 @@ export const config = {
     },
     // The analytics relay runs here on every host: this is the only way from /ingest to PostHog.
     "/ingest/:path*",
+    // So does sign-in: its rate limits count by a header only the proxy may set.
+    "/api/auth/:path*",
   ],
 };
