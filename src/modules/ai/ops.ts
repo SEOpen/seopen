@@ -13,7 +13,7 @@ import { rules } from "@/plan-policy/rules";
 import { PLATFORM_KEYS } from "./platforms";
 import { canonicalTopic, monthlyCost, promptToKeyword, roundUsd } from "./prompts";
 import { namesBrand } from "./detect";
-import { costRates, estimateRun, loadBrands, startRun } from "./run";
+import { beginRun, costRates, estimateRun, loadBrands, ManualRunLimitError } from "./run";
 
 /** AI visibility changes shared by the Server Actions and the MCP server (see `src/lib/ops`). */
 
@@ -140,12 +140,14 @@ export interface StartedRun {
   message: string;
 }
 
+const RUN_IN_PROGRESS = "A run is already in progress for this project. Its answers arrive over the next few minutes.";
+
 /** Asks every active prompt now, on research credits. One run at a time per project. */
 export async function startAiRunOp(scope: ProjectScope, opts: OpOptions = {}): Promise<StartedRun> {
   const refusal = await projectActionRefusal(scope, { paid: true, research: true, quiet: opts.dryRun });
   if (refusal) throw new OpError(`Not started. ${refusal.message}`, refusal);
   const busy = await db.$count(aiRuns, and(inScope(aiRuns, scope), inArray(aiRuns.status, ["queued", "running"])));
-  if (busy) throw new OpError("A run is already in progress for this project. Its answers arrive over the next few minutes.");
+  if (busy) throw new OpError(RUN_IN_PROGRESS);
   const [project] = await db
     .select()
     .from(projects)
@@ -159,15 +161,19 @@ export async function startAiRunOp(scope: ProjectScope, opts: OpOptions = {}): P
   const price = { credits: creditsFor(est.usd) };
   const what = `${plural(est.answers, "answer")}${est.aioChecks ? ` and ${plural(est.aioChecks, "AI Overview check")}` : ""}`;
   if (opts.dryRun) return { dryRun: true, runId: null, answers: est.answers, aioChecks: est.aioChecks, price, estimateUsd, message: `Would ask for ${what}, about ${rules.creditsText(price.credits)}.` };
-  let runId: number | null;
+  let started: { id: number; created: boolean } | null;
   try {
-    runId = await startRun(scope, "manual");
+    started = await beginRun(scope, "manual");
   } catch (err) {
+    // Another start used the week's last run between the check above and this one.
+    if (err instanceof ManualRunLimitError) throw new OpError(`Not started. ${err.message}`, err.refusal);
     if (err instanceof SpendRefusedError) throw new OpError(`Not started. ${err.message}`, err.refusal);
     // Only the internal workspace gets a bare BudgetExceededError, with its dollar figures.
     if (err instanceof BudgetExceededError) throw new OpError(`Not started: this run would pass the monthly cap. ${err.message}`);
     throw err;
   }
-  if (!runId) throw new OpError("No active prompts to run. Add prompts first.");
-  return { dryRun: false, runId, answers: est.answers, aioChecks: est.aioChecks, price, estimateUsd, message: `Run queued: ${what}, about ${rules.creditsText(price.credits)}. Answers arrive over the next few minutes.` };
+  if (!started) throw new OpError("No active prompts to run. Add prompts first.");
+  // Another start made the run first: this one started nothing.
+  if (!started.created) throw new OpError(RUN_IN_PROGRESS);
+  return { dryRun: false, runId: started.id, answers: est.answers, aioChecks: est.aioChecks, price, estimateUsd, message: `Run queued: ${what}, about ${rules.creditsText(price.credits)}. Answers arrive over the next few minutes.` };
 }

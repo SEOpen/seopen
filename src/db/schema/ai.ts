@@ -1,4 +1,5 @@
 // Owned by the ai module. See docs/conventions.md.
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -75,7 +76,15 @@ export const aiRuns = pgTable(
     startedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp({ withTimezone: true }),
   },
-  (t) => [index().on(t.projectId, t.startedAt), index().on(t.status), ...projectScoped("ai_runs", t)],
+  (t) => [
+    index().on(t.projectId, t.startedAt),
+    index().on(t.status),
+    // At most one run in progress per project, so two starts at once can't both pay for one.
+    uniqueIndex("ai_runs_one_active_per_project")
+      .on(t.projectId)
+      .where(sql`status in ('queued', 'running')`),
+    ...projectScoped("ai_runs", t),
+  ],
 );
 
 /** One prompt asked on one platform in one run: the answer, its citations and what we detected. */
