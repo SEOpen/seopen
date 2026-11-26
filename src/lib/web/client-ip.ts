@@ -16,27 +16,19 @@ import net from "node:net";
  * - `cloudfront` (the AWS stack): CloudFront writes CloudFront-Viewer-Address, over anything the
  *   visitor sent, and the load balancer only admits CloudFront. X-Real-IP is off limits to
  *   CloudFront Functions and X-Forwarded-For ends in CloudFront's own address, so neither is read.
- * - `1`, the older setting, and Vercel, which writes both: X-Real-IP, else the last X-Forwarded-For
- *   entry. Behind a proxy that only appends X-Forwarded-For, a visitor's own X-Real-IP wins, so `1`
- *   warns once and asks for the header to be named.
+ * - `1`, the older setting, is the same as `x-forwarded-for`: the header Caddy, Traefik and the usual
+ *   nginx setup all write. Behind a proxy that sets only X-Real-IP, name `x-real-ip` instead.
+ * - Vercel, which writes both over anything the visitor sent: X-Real-IP, else the last X-Forwarded-For entry.
  *
  * In every named mode a missing header means no address, never a fallback a visitor could write.
  * Unset, or any other value, nothing is trusted.
  */
 type ProxyMode = "x-forwarded-for" | "x-real-ip" | "cloudfront" | "either";
 
-let warnedEither = false;
-
 function proxyMode(): ProxyMode | null {
   const value = process.env.SEOPEN_TRUST_PROXY?.trim().toLowerCase();
   if (value === "x-forwarded-for" || value === "x-real-ip" || value === "cloudfront") return value;
-  if (value === "1") {
-    if (!warnedEither) {
-      warnedEither = true;
-      console.warn("[client-ip] SEOPEN_TRUST_PROXY=1 reads X-Real-IP before X-Forwarded-For. Set it to x-forwarded-for or x-real-ip, whichever your proxy writes (docs/self-hosting.md).");
-    }
-    return "either";
-  }
+  if (value === "1") return "x-forwarded-for";
   return process.env.VERCEL ? "either" : null;
 }
 

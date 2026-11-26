@@ -55,9 +55,8 @@ To see why the mode is off for you, open `/api/auth/local-sign-in` in the browse
   - `x-real-ip` when the proxy sets `X-Real-IP` over what the visitor sent, as nginx does with
     `proxy_set_header X-Real-IP $remote_addr;`.
 
-  The older `SEOPEN_TRUST_PROXY=1` still works but reads `X-Real-IP` first, which a visitor can
-  write behind a proxy that only appends `X-Forwarded-For`, so the app warns once in its log.
-  Unset, the headers are ignored, since anyone reaching the port directly could write their own,
+  The older `SEOPEN_TRUST_PROXY=1` means `x-forwarded-for`. Until 2026-11-26 it read `X-Real-IP`
+  first, so a proxy that sets only `X-Real-IP` now needs `x-real-ip`. Unset, the headers are ignored, since anyone reaching the port directly could write their own,
   and every visitor shares one limit.
 - `SEOPEN_SITE_HOST`: the copy's public address (`example.com`), for email links and the MCP
   server's website.
