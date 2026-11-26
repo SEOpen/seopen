@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { oauthAccessTokens, oauthClients, oauthConnections, oauthConsents, oauthRefreshTokens, users, verifications, workspaceMembers, workspaces } from "@/db/schema";
 import { auth, authBaseUrl } from "@/lib/auth";
 import { MCP_SCOPES, mcpResource, OAUTH_SCOPES, oauthIssuer, WORKSPACE_CLAIM, workspaceOfUser } from "@/lib/auth/oauth";
+import { LOOPBACK_HOSTS } from "@/lib/auth/oauth-grants";
 import type { WorkspaceScope } from "@/lib/workspace";
 import type { Principal } from "./keys";
 
@@ -154,8 +155,6 @@ export async function consentWorkspace(userId: string): Promise<{ id: number; na
   const [ws] = await db.select({ id: workspaces.id, name: workspaces.name, status: workspaces.status }).from(workspaces).where(eq(workspaces.id, id));
   return ws ? { id: ws.id, name: ws.name, active: ws.status === "active" } : null;
 }
-
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
  * Whether a requested redirect URI matches a registered one, by the provider's own rule
