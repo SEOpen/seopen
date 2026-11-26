@@ -32,7 +32,7 @@ export interface LoadOpts {
 
 /** Cached response for a spec that's free for this workspace, or null. Never spends. */
 export async function peek<R>(spec: DfsSpec, workspaceId: number): Promise<{ res: DfsResponse<R>; createdAt: Date } | null> {
-  const hit = await peekCache<R>(workspaceId, "POST", spec.path, [spec.task]);
+  const hit = await peekCache<R>(workspaceId, "POST", spec.path, [spec.task], spec.ttlSeconds);
   return hit ? { res: hit.response, createdAt: hit.createdAt } : null;
 }
 

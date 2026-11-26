@@ -17,6 +17,8 @@ const { dfsPost, peekCache, workspaceCacheKey } = await import("./client");
 
 const SHARED_PATH = "dataforseo_labs/google/keyword_overview/live";
 const DAY = 86_400_000;
+// The life these lookups ask for: longer than the seeded answer is old, so it is still theirs to read.
+const WEEK = 7 * 86_400;
 
 async function workspace() {
   const [ws] = await db.insert(workspaces).values({ name: `timing-${randomUUID()}`, plan: "internal" }).returning();
@@ -58,7 +60,7 @@ describe.skipIf(!ready)("shared cache timing", () => {
     const [A, B] = [await workspace(), await workspace()];
     const { body, then } = await seedOld(A);
     const before = Date.now();
-    await dfsPost(SHARED_PATH, body, { workspaceId: B, module: "keywords", ttlSeconds: 3600 });
+    await dfsPost(SHARED_PATH, body, { workspaceId: B, module: "keywords", ttlSeconds: WEEK });
     const b = await peekCache(B, "POST", SHARED_PATH, body);
     expect(b!.createdAt.getTime()).toBeGreaterThanOrEqual(before - 1000);
     // The workspace that fetched still sees its own time.
@@ -68,11 +70,11 @@ describe.skipIf(!ready)("shared cache timing", () => {
   it("keeps a payer's free view when another workspace refreshes a live answer", async () => {
     const [A, B] = [await workspace(), await workspace()];
     const { body, key } = await seedOld(A);
-    await dfsPost(SHARED_PATH, body, { workspaceId: B, module: "keywords", ttlSeconds: 3600 });
+    await dfsPost(SHARED_PATH, body, { workspaceId: B, module: "keywords", ttlSeconds: WEEK });
     const paid = (await peekCache(B, "POST", SHARED_PATH, body))!.createdAt;
 
     answering("new");
-    await dfsPost(SHARED_PATH, body, { workspaceId: A, module: "keywords", ttlSeconds: 3600, force: true });
+    await dfsPost(SHARED_PATH, body, { workspaceId: A, module: "keywords", ttlSeconds: WEEK, force: true });
 
     const b = await peekCache(B, "POST", SHARED_PATH, body);
     expect(b).not.toBeNull();
@@ -81,14 +83,47 @@ describe.skipIf(!ready)("shared cache timing", () => {
     expect((await access(key, A))[0].paidAt.getTime()).toBeGreaterThan(Date.now() - 60_000);
   });
 
+  it("fetches again for a call that asks for a shorter life than the saved answer is old", async () => {
+    const [A, B] = [await workspace(), await workspace()];
+    // Three days old, kept by a call that asked for longer.
+    const { body, key, then } = await seedOld(A);
+    const fetched = () => vi.mocked(fetch).mock.calls.length;
+
+    answering("new");
+    // Too old for a day-long lookup, from another workspace or the one that paid for it.
+    expect(await peekCache(A, "POST", SHARED_PATH, body, 86_400)).toBeNull();
+    expect(await peekCache(B, "POST", SHARED_PATH, body, 86_400)).toBeNull();
+    const res = await dfsPost<string>(SHARED_PATH, body, { workspaceId: B, module: "keywords", ttlSeconds: 86_400 });
+    expect(fetched()).toBe(1);
+    expect(res.tasks?.[0].result).toEqual(["new"]);
+    const [row] = await db.select().from(apiCache).where(eq(apiCache.key, key));
+    expect(row.createdAt.getTime()).toBeGreaterThan(then.getTime());
+
+    // The new answer serves the next day-long lookup, and a week-long one, without another fetch.
+    await dfsPost(SHARED_PATH, body, { workspaceId: B, module: "keywords", ttlSeconds: 86_400 });
+    await dfsPost(SHARED_PATH, body, { workspaceId: B, module: "keywords", ttlSeconds: WEEK });
+    expect(fetched()).toBe(1);
+    expect(await peekCache(B, "POST", SHARED_PATH, body, 86_400)).not.toBeNull();
+  });
+
+  it("still serves a saved answer to a call whose life covers its age", async () => {
+    const [A, B] = [await workspace(), await workspace()];
+    const { body } = await seedOld(A);
+    answering("new");
+    const res = await dfsPost<string>(SHARED_PATH, body, { workspaceId: B, module: "keywords", ttlSeconds: WEEK });
+    expect(vi.mocked(fetch).mock.calls.length).toBe(0);
+    expect(res.tasks?.[0].result).toEqual(["old"]);
+    expect(await peekCache(A, "POST", SHARED_PATH, body, WEEK)).not.toBeNull();
+  });
+
   it("makes everyone pay again once the answer expired", async () => {
     const [A, B] = [await workspace(), await workspace()];
     const { body, key } = await seedOld(A);
-    await dfsPost(SHARED_PATH, body, { workspaceId: B, module: "keywords", ttlSeconds: 3600 });
+    await dfsPost(SHARED_PATH, body, { workspaceId: B, module: "keywords", ttlSeconds: WEEK });
     await db.update(apiCache).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(apiCache.key, key));
 
     answering("new");
-    await dfsPost(SHARED_PATH, body, { workspaceId: A, module: "keywords", ttlSeconds: 3600 });
+    await dfsPost(SHARED_PATH, body, { workspaceId: A, module: "keywords", ttlSeconds: WEEK });
 
     expect(await peekCache(B, "POST", SHARED_PATH, body)).toBeNull();
     expect(await peekCache(A, "POST", SHARED_PATH, body)).not.toBeNull();

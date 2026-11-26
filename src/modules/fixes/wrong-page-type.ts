@@ -54,6 +54,7 @@ async function savedResults(scope: ProjectScope, queries: string[], since: strin
   }
   const market = { locationCode: project.locationCode, languageCode: project.languageCode };
   // peekCache directly, not keywords/dfs's `peek`: dfs.ts is server-only and this runs in the worker.
+  // With no age limit: the Refresh panel keeps this same search for a week, and each row says how old it is (`at`).
   const looked = await Promise.all(
     queries.map(async (q) => {
       const spec = serpSpec(q, market);

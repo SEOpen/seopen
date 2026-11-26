@@ -66,7 +66,7 @@ interface CallOpts {
  */
 async function call<R>(path: string, task: object, ttlSeconds: number, rows: number, opts: CallOpts): Promise<Called<R> | null> {
   if (!opts.force) {
-    const hit = await peekCache<R>(opts.workspaceId, "POST", path, [task]);
+    const hit = await peekCache<R>(opts.workspaceId, "POST", path, [task], ttlSeconds);
     if (hit) return { ...hit.response, cached: true, fetchedAt: hit.createdAt };
     if (opts.run === false) return null;
   }

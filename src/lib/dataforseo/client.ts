@@ -275,7 +275,12 @@ export function cacheable(json: Pick<DfsResponse, "status_code" | "tasks_error" 
   return json.status_code === 20000 && !json.tasks_error && (json.tasks ?? []).every((t) => t.status_code === 20000 || t.status_code === 40102);
 }
 
-async function readCache<R>(workspaceId: number, key: string, shared: boolean): Promise<CacheHit<R> | null> {
+/**
+ * `maxAgeSeconds` is the life the reading call asks for. A row lives as long as the call that wrote it
+ * asked, and two calls can share a key with different lives, so a row older than the reader's own
+ * life is a miss for that reader: a day-long lookup is never answered from a week-old row.
+ */
+async function readCache<R>(workspaceId: number, key: string, shared: boolean, maxAgeSeconds?: number): Promise<CacheHit<R> | null> {
   const [row] = await db
     .select({ response: apiCache.response, createdAt: apiCache.createdAt, payer: apiCacheAccess.workspaceId, paidAt: apiCacheAccess.paidAt })
     .from(apiCache)
@@ -283,6 +288,7 @@ async function readCache<R>(workspaceId: number, key: string, shared: boolean): 
     .where(and(eq(apiCache.key, key), gt(apiCache.expiresAt, new Date())));
   // Saved before `cacheable` checked each task: a failed task is a miss, so the next call fetches again.
   if (!row || !cacheable(row.response as DfsResponse)) return null;
+  if (maxAgeSeconds !== undefined && Date.now() - row.createdAt.getTime() > maxAgeSeconds * 1000) return null;
   // A per-workspace key is the workspace's own by construction.
   const paid = !shared || row.payer !== null;
   const shownAt = shared && row.paidAt ? row.paidAt : row.createdAt;
@@ -294,14 +300,17 @@ async function readCache<R>(workspaceId: number, key: string, shared: boolean): 
  * render cached data without spending. A shared response another workspace paid for returns null,
  * so the page offers "Run" at the normal price instead of revealing that someone looked it up.
  * `createdAt` is the reader's own time (CacheHit's `shownAt`), never another workspace's fetch.
+ * `maxAgeSeconds` is the life the paid call for the same request would ask for (`ttlSeconds`), so
+ * a page shows nothing older than that call would accept.
  */
 export async function peekCache<R>(
   workspaceId: number,
   method: "GET" | "POST",
   path: string,
   body?: unknown,
+  maxAgeSeconds?: number,
 ): Promise<{ response: DfsResponse<R>; createdAt: Date } | null> {
-  const hit = await readCache<R>(workspaceId, workspaceCacheKey(workspaceId, method, path, body), sharedCacheEndpoint(path));
+  const hit = await readCache<R>(workspaceId, workspaceCacheKey(workspaceId, method, path, body), sharedCacheEndpoint(path), maxAgeSeconds);
   return hit?.paid ? { response: hit.response, createdAt: hit.shownAt } : null;
 }
 
@@ -408,7 +417,7 @@ async function request<R>(method: "GET" | "POST", path: string, body: unknown, o
   const key = workspaceCacheKey(workspaceId ?? 0, method, endpoint, body);
 
   if (workspaceId !== undefined && ttl > 0 && !opts.force) {
-    const hit = await readCache<R>(workspaceId, key, shared);
+    const hit = await readCache<R>(workspaceId, key, shared, ttl);
     if (hit) return serveHit(key, endpoint, hit, { ...opts, workspaceId });
   }
   // One call per cache key fetches at a time; the others wait for its answer (claims.ts).
@@ -466,14 +475,14 @@ async function claimOrWait<R>(
     const token = await claimKey(key);
     if (token) {
       // The call before this one may have saved its answer just before letting go of the key.
-      const hit = opts.force && !waited ? null : await readCache<R>(opts.workspaceId, key, shared);
+      const hit = opts.force && !waited ? null : await readCache<R>(opts.workspaceId, key, shared, opts.ttlSeconds);
       if (!usable(hit)) return { token };
       await releaseClaim(key, token);
       return { response: await serveHit(key, endpoint, hit, opts) };
     }
     waited = true;
     if ((await waitForClaim(key, deadline)) === "busy") throw new LookupInFlightError(endpoint);
-    const hit = await readCache<R>(opts.workspaceId, key, shared);
+    const hit = await readCache<R>(opts.workspaceId, key, shared, opts.ttlSeconds);
     if (usable(hit)) return { response: await serveHit(key, endpoint, hit, opts) };
     // No answer was saved (its fetch failed, or its claim lapsed): claim the key and fetch.
   }

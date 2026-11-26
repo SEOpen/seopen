@@ -89,7 +89,7 @@ export async function findListingsOp(scope: ProjectScope, input: { name: string;
   if (!name || !city) throw new OpError("Enter the business name and its city.");
   const refusal = await projectActionRefusal(scope, { paid: true, research: true, quiet: opts.dryRun });
   if (refusal) throw refused(refusal);
-  const cached = (await peekCache(scope.workspaceId, "POST", MAPS_SEARCH, await searchTasks(scope, name, city))) !== null;
+  const cached = (await peekCache(scope.workspaceId, "POST", MAPS_SEARCH, await searchTasks(scope, name, city), TTL.day)) !== null;
   const price = cached ? { credits: 0, usd: null } : await priceOf(scope, SEARCH_PRICE_USD);
   if (opts.dryRun) {
     const cost = cached ? "free (searched in the last day)" : `≈ ${rules.creditsText(price.credits)}`;
@@ -136,7 +136,7 @@ export async function addBusinessOp(
   if (!isGridSize(gridSize) || !isRadius(radiusMiles)) throw new OpError("The grid is 3, 5 or 7 points across, and the radius 1, 3, 5 or 10 miles.");
   const tasks = await searchTasks(scope, name, city);
   // A dry run only looks in the cache, so it never spends; step 1 put the search there.
-  const saved = opts.dryRun || opts.savedSearchOnly ? await peekCache<MapsResult>(scope.workspaceId, "POST", MAPS_SEARCH, tasks) : null;
+  const saved = opts.dryRun || opts.savedSearchOnly ? await peekCache<MapsResult>(scope.workspaceId, "POST", MAPS_SEARCH, tasks, TTL.day) : null;
   // The one read decides: a search that expires right after it is still used, never bought again.
   if (opts.savedSearchOnly && !opts.dryRun && !saved) throw new OpError(SEARCH_NOT_SAVED);
   const candidates = opts.dryRun || opts.savedSearchOnly ? parseCandidates(saved?.response.tasks?.[0]?.result?.[0]) : await searchMaps(scope, name, city).catch(spendMessage);
