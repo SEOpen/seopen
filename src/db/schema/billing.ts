@@ -99,7 +99,9 @@ export const signupClaims = pgTable("signup_claims", {
  * is stored only as a keyed hash (HMAC under a key derived from SEOPEN_SECRET_KEY), so a guess
  * can't be confirmed without the server's key. Unlike
  * trial claims a row is released: moving to a paid plan, archiving or deleting the project, or
- * deleting the workspace (the foreign key) drops it, so a site is never locked for good.
+ * deleting the workspace (the foreign key) drops it, so a site is never locked for good. A site
+ * released in the week it had a Free audit keeps its row until that week ends, marked released, so
+ * the next workspace to hold it can add it but not audit it again that week.
  */
 export const freeSiteClaims = pgTable(
   "free_site_claims",
@@ -109,6 +111,10 @@ export const freeSiteClaims = pgTable(
     claimedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     /** The holder proved it owns the site in Search Console, so a workspace that hasn't can't take it over. */
     verified: boolean().notNull().default(false),
+    /** When a holder that let the site go had last audited it on the Free plan, as far as could be told then. */
+    auditedAt: timestamp({ withTimezone: true }),
+    /** When the holder let the site go. Set, the row holds nothing: it only remembers `auditedAt` until that week ends. */
+    releasedAt: timestamp({ withTimezone: true }),
   },
   (t) => [index().on(t.workspaceId)],
 );
