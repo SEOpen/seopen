@@ -82,7 +82,7 @@ To do it by hand, follow one of the next two sections.
 
 ## Run it with Docker
 
-Requirements: Docker with Compose, and a DataForSEO account ([sign up here](https://try.dataforseo.com/65m65rikt8ny); an affiliate link, so SEOpen may earn a commission).
+Requirements: Docker with Compose 2.24 or later (`docker compose version` says which), and a DataForSEO account ([sign up here](https://try.dataforseo.com/65m65rikt8ny); an affiliate link, so SEOpen may earn a commission).
 
 ```bash
 git clone https://github.com/SEOpen/seopen.git
@@ -101,7 +101,7 @@ docker compose up -d --build
 
 Open **http://127.0.0.1:4100** (http://localhost:4100 sends you there). It opens without a password: see [Signing in](#signing-in). A one-off `migrate` service applies the database migrations first, and the web app and the worker start once it's done (`docker compose logs migrate` says "migrations applied").
 
-To update, pull the new code and run `docker compose up -d --build` again. Your data is in the `pgdata` volume, so back that database up before a big update.
+To update, back up the database ([Backups](docs/self-hosting.md#backups)), then run `git pull` and `docker compose up -d --build` again. Your data is in the `pgdata` volume, which `docker compose down -v` deletes, so leave out `-v`.
 
 The web container listens on 127.0.0.1:4100 only. To serve it on a domain, put a reverse proxy with TLS on the same machine in front of it and follow [docs/self-hosting.md](docs/self-hosting.md).
 
@@ -140,9 +140,9 @@ To see why it's off, open `http://127.0.0.1:4100/api/auth/local-sign-in`.
 
 `.env.example` lists what a copy on your own machine needs, with a note on each. Beyond the three above:
 
-- **Google** (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`): Search Console and GA4 need your own Google Cloud project and OAuth client. Until Google verifies your app, sign-in shows a warning screen. Steps in [docs/google.md](docs/google.md).
+- **Google** (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`): Search Console and GA4 need your own Google Cloud project and OAuth client. Until Google verifies your app, sign-in shows a warning screen. Set the app's publishing status to In production: in Testing, Google ends the connection 7 days after you connect. Steps in [docs/google.md](docs/google.md).
 - **Local SEO map** (`GOOGLE_MAPS_STATIC_KEY`, `GOOGLE_MAPS_SIGNING_SECRET`): optional. Without them the map uses OpenStreetMap tiles, which are fine for testing but not for commercial use.
-- **Analytics sources:** PostHog, Plausible and Umami each connect from a project's Analytics page. See [docs/posthog.md](docs/posthog.md), [docs/plausible.md](docs/plausible.md) and [docs/umami.md](docs/umami.md).
+- **Analytics sources:** PostHog, Plausible and Umami each connect from a project's Analytics page. PostHog's sign-in needs your copy on an https address, so it can't connect at 127.0.0.1 (`SEOPEN_POSTHOG_FIXTURES`, below, works anywhere). See [docs/posthog.md](docs/posthog.md), [docs/plausible.md](docs/plausible.md) and [docs/umami.md](docs/umami.md).
 - **Claude** (`ANTHROPIC_API_KEY`): optional, for guided setup's review. Its calls count against your spend cap.
 - **Email alerts** (`RESEND_API_KEY`, `EMAIL_FROM`, `OWNER_ALERT_EMAIL`): optional. An email when the spend cap nears or the DataForSEO balance runs low, instead of a line in the server log. Steps in [docs/self-hosting.md](docs/self-hosting.md#email-and-alerts).
 - **Forgotten password:** set a new one from the server with `pnpm user:password you@example.com` (`docker compose exec web pnpm user:password you@example.com` in Docker). It signs the account out everywhere, revokes its API keys and disconnects its connected apps.
