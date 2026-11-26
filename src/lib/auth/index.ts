@@ -25,7 +25,7 @@ import { resetPasswordMessage } from "@/lib/email";
 import { CLIENT_IP_HEADER } from "@/lib/web/client-ip";
 import { signup } from "@/public-signup/server";
 import { authBaseUrl } from "./base-url";
-import { revokeResetLinks } from "./reset-links";
+import { RESET_PASSWORD_PATH, resetPageLink, revokeResetLinks } from "./reset-links";
 import { revokeAgentAccess } from "./revoke-agents";
 import { noLoginPlugin } from "./no-login-plugin";
 import { OAUTH_DISABLED_PATHS, oauthPlugins } from "./oauth";
@@ -48,9 +48,6 @@ export function authSecret(): string | undefined {
   if (key.length !== 32) return undefined;
   return Buffer.from(hkdfSync("sha256", key, Buffer.alloc(0), "seopen-better-auth-v1", 32)).toString("base64");
 }
-
-// The one page a password-reset link may land on (`src/app/(auth)/reset-password`).
-const RESET_PASSWORD_PATH = "/reset-password";
 
 /**
  * Strangers can't make accounts here: an operator makes them (scripts/create-owner.ts, or Admin's
@@ -116,7 +113,9 @@ export const auth = betterAuth({
     minPasswordLength: 8,
     resetPasswordTokenExpiresIn: 60 * 60,
     revokeSessionsOnPasswordReset: true,
-    sendResetPassword: async ({ user, url }) => sendAfterResponse("reset password", { to: user.email, ...resetPasswordMessage(url) }),
+    // The mailed link opens the reset page with the token in the query, not Better Auth's
+    // /reset-password/<token>, so the token never sits in a path (resetPageLink).
+    sendResetPassword: async ({ user, token }) => sendAfterResponse("reset password", { to: user.email, ...resetPasswordMessage(resetPageLink(authBaseUrl(), token)) }),
     // Sessions go above; MCP keys and connected apps would outlive them, so a reset cuts those off
     // too (src/lib/auth/revoke-agents.ts). Runs after the new password is saved; a failure fails
     // the request, so it never reports success with access still open.

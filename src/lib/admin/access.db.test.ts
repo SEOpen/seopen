@@ -62,7 +62,7 @@ describe.skipIf(!ready)("admin access", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0].to).toBe(address);
     expect(sent[0].subject).toBe("Your SEOpen admin account");
-    expect(sent[0].text).toMatch(/reset-password\/[\w-]+\?callbackURL=/);
+    expect(sent[0].text).toMatch(/\/reset-password\?token=[\w-]+&invite=1/);
     expect(await adminUserIds()).toEqual([u.id]);
   });
 

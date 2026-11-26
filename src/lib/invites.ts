@@ -4,7 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, workspaceMembers, workspaces } from "@/db/schema";
 import { auth } from "@/lib/auth";
-import { revokeResetLinks } from "@/lib/auth/reset-links";
+import { resetPageLink, revokeResetLinks } from "@/lib/auth/reset-links";
 import { hooks } from "@/plan-policy/hooks";
 
 /** Accounts an operator makes for someone: Admin's new admins and, on getseopen.com, waitlist invites. */
@@ -35,8 +35,8 @@ export async function setPasswordLink(userId: string): Promise<string> {
     value: userId,
     expiresAt: new Date(Date.now() + INVITE_LINK_DAYS * 86_400_000),
   });
-  // Better Auth's own reset callback checks the token, then sends it on to /reset-password.
-  return `${ctx.baseURL}/reset-password/${token}?callbackURL=${encodeURIComponent("/reset-password?invite=1")}`;
+  // Straight to the reset page, the token in the query (resetPageLink says why).
+  return resetPageLink(new URL(ctx.baseURL).origin, token, true);
 }
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
