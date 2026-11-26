@@ -46,10 +46,19 @@ To see why the mode is off for you, open `/api/auth/local-sign-in` in the browse
 - `BETTER_AUTH_URL`: the https address people open, for example `https://seo.example.com`. Sign-in
   refuses any other origin. Unset, it defaults to `http://127.0.0.1:4100`. Set it on the worker as
   well: links in the emails it sends start with it.
-- `SEOPEN_TRUST_PROXY=1` when a reverse proxy in front of the app sets `X-Real-IP` or appends
-  `X-Forwarded-For`. Sign-in's rate limit keys visitors by that address. Unset, the headers are
-  ignored, since anyone reaching the port directly could write their own, and every visitor shares
-  one limit.
+- `SEOPEN_TRUST_PROXY` when a reverse proxy in front of the app reports the visitor's address.
+  Sign-in's rate limit keys visitors by it. Name the header your proxy writes, since it passes the
+  other one on as the visitor sent it:
+  - `x-forwarded-for` when the proxy appends `X-Forwarded-For`: Caddy's and Traefik's defaults,
+    and nginx with `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`. Only the last
+    entry is read.
+  - `x-real-ip` when the proxy sets `X-Real-IP` over what the visitor sent, as nginx does with
+    `proxy_set_header X-Real-IP $remote_addr;`.
+
+  The older `SEOPEN_TRUST_PROXY=1` still works but reads `X-Real-IP` first, which a visitor can
+  write behind a proxy that only appends `X-Forwarded-For`, so the app warns once in its log.
+  Unset, the headers are ignored, since anyone reaching the port directly could write their own,
+  and every visitor shares one limit.
 - `SEOPEN_SITE_HOST`: the copy's public address (`example.com`), for email links and the MCP
   server's website.
 - `DATABASE_CA_CERT`: managed Postgres only, the provider's CA certificate as PEM text or a file

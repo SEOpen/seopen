@@ -18,6 +18,31 @@ describe("clientAddress", () => {
     expect(clientAddress(h({ "x-real-ip": "203.0.113.9" }), true)).toBeNull();
   });
 
+  it("reads only the header the proxy is named as writing", () => {
+    // Caddy appends X-Forwarded-For and passes a visitor's X-Real-IP on untouched.
+    vi.stubEnv("SEOPEN_TRUST_PROXY", "x-forwarded-for");
+    expect(clientAddress(h({ "x-forwarded-for": "192.0.2.50, 198.51.100.10", "x-real-ip": "203.0.113.9" }))).toBe("198.51.100.10");
+    expect(clientAddress(h({ "x-real-ip": "203.0.113.9" }))).toBeNull();
+    // nginx setting only X-Real-IP passes a visitor's X-Forwarded-For on untouched.
+    vi.stubEnv("SEOPEN_TRUST_PROXY", "X-Real-IP");
+    expect(clientAddress(h({ "x-real-ip": "198.51.100.10", "x-forwarded-for": "203.0.113.9" }))).toBe("198.51.100.10");
+    expect(clientAddress(h({ "x-forwarded-for": "203.0.113.9" }))).toBeNull();
+  });
+
+  it("keeps the older `1` reading X-Real-IP, then the last X-Forwarded-For entry", () => {
+    vi.stubEnv("SEOPEN_TRUST_PROXY", "1");
+    expect(clientAddress(h({ "x-real-ip": "198.51.100.10", "x-forwarded-for": "203.0.113.9" }))).toBe("198.51.100.10");
+    expect(clientAddress(h({ "x-forwarded-for": "192.0.2.50, 203.0.113.9" }))).toBe("203.0.113.9");
+  });
+
+  it("trusts nothing when unset or set to something it doesn't know", () => {
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("SEOPEN_TRUST_PROXY", "");
+    expect(clientAddress(h({ "x-real-ip": "203.0.113.9" }))).toBeNull();
+    vi.stubEnv("SEOPEN_TRUST_PROXY", "yes");
+    expect(clientAddress(h({ "x-real-ip": "203.0.113.9" }))).toBeNull();
+  });
+
   it("is null for something that isn't an address", () => {
     expect(clientAddress(h({ "x-real-ip": "not-an-ip" }), true)).toBeNull();
   });
