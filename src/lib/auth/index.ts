@@ -48,6 +48,9 @@ export function authSecret(): string | undefined {
   return Buffer.from(hkdfSync("sha256", key, Buffer.alloc(0), "seopen-better-auth-v1", 32)).toString("base64");
 }
 
+// The one page a password-reset link may land on (`src/app/(auth)/reset-password`).
+const RESET_PASSWORD_PATH = "/reset-password";
+
 /**
  * Strangers can't make accounts here: an operator makes them (scripts/create-owner.ts, or Admin's
  * invites, src/lib/invites.ts). A hosted service can add its own sign-up, which says through
@@ -158,6 +161,9 @@ export const auth = betterAuth({
     before: createAuthMiddleware(async (ctx) => {
       // Whatever the request asked for: a new password always signs out every other session.
       if (ctx.path === "/change-password") return { context: { body: { ...ctx.body, revokeOtherSessions: true } } };
+      // Whatever the request asked for: a reset link lands on the reset page and nowhere else. The link
+      // adds its token to the address it lands on, so no other page gets to see one.
+      if (ctx.path === "/request-password-reset") return { context: { body: { ...ctx.body, redirectTo: RESET_PASSWORD_PATH } } };
       if (ctx.path !== "/sign-up/email") return;
       const body = await signup.beforeEmailSignUp(ctx.body);
       if (body) return { context: { body } };
