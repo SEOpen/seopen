@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { crawlerAccess } from "./crawlers";
-import { decidingRule, isAllowed, parseRobots, pathRules, rulesFor } from "./robots";
+import { decidingRule, isAllowed, MAX_PATH, parseRobots, pathRules, rulesFor } from "./robots";
 
 describe("parseRobots", () => {
   it("groups consecutive user-agent lines and collects sitemaps", () => {
@@ -133,5 +133,30 @@ describe("decidingRule on a hostile robots.txt", () => {
       const longest = patterns.filter((p) => regex(p).test(path)).reduce<string | null>((best, p) => (best === null || p.length > best.length ? p : best), null);
       expect(decidingRule(patterns.map(rule), path)?.pattern ?? null, `${patterns.join(" ")} on ${path}`).toBe(longest);
     }
+  });
+});
+
+describe("the prepared rules and paths", () => {
+  it("freezes a parsed file's rules, so the patterns prepared from them stay right", () => {
+    const { rules } = parseRobots("User-agent: *\nDisallow: /a\nAllow: /a/b").groups[0];
+    expect(Object.isFrozen(rules)).toBe(true);
+    expect(Object.isFrozen(rules[0])).toBe(true);
+    expect(() => (rules as { allow: boolean; pattern: string }[]).push({ allow: true, pattern: "/" })).toThrow();
+  });
+
+  it("gives each path its own answer from one list, as a fresh copy of the list would", () => {
+    const { rules } = parseRobots("User-agent: *\nDisallow: /*abcdef*abcdef\nAllow: /*-1-abcdef\nDisallow: /x$\nAllow: /abc*$").groups[0];
+    const paths = ["/abcdef-1-abcdef", "/abcdef-2-abcdef", "/abcdef", "/x", "/xy", "/abcd", "/abcdef-1-abcdef"];
+    const shared = paths.map((p) => decidingRule(rules, p));
+    expect(shared).toEqual(paths.map((p) => decidingRule([...rules], p)));
+    expect(shared.map((r) => r && `${r.allow ? "Allow" : "Disallow"}: ${r.pattern}`)).toEqual(["Disallow: /*abcdef*abcdef", "Disallow: /*abcdef*abcdef", "Allow: /abc*$", "Disallow: /x$", null, "Allow: /abc*$", "Disallow: /*abcdef*abcdef"]);
+  });
+
+  it("reads a path near 1 MB up to its first 8,192 characters", () => {
+    const robots = parseRobots(`User-agent: *\n${Array.from({ length: 2_000 }, (_, i) => `Disallow: /*a${i}b\n`).join("")}Disallow: /*zz\n`);
+    const started = Date.now();
+    expect(isAllowed(robots, "GPTBot", "/" + "a".repeat(MAX_PATH - 4) + "zz")).toBe(false);
+    expect(isAllowed(robots, "GPTBot", "/" + "a".repeat(1_000_000) + "zz")).toBe(true);
+    expect(Date.now() - started).toBeLessThan(1500);
   });
 });

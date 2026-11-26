@@ -1,10 +1,11 @@
 /**
  * No-login mode: a copy running on your own machine opens straight into the app, signed in as its
- * owner, with no password. It is on only when SEOPEN_NO_LOGIN=1 (the local .env.example sets it)
- * and every check below says the request came from this machine. Anything that looks like a server
- * (a public address in the settings, a reverse proxy, a visitor from another address) turns it off,
- * and the copy asks for a password as before. docs/self-hosting.md explains it for people, and
- * AGENTS.md for coding agents.
+ * owner, with no password. It belongs only on a port bound to 127.0.0.1. It is on when
+ * SEOPEN_NO_LOGIN=1 (the local .env.example sets it) and every check below passes. A request that
+ * doesn't look local (a public address in the settings, a reverse proxy, a visitor from another
+ * address) turns it off, and the copy asks for a password as before. The checks reduce the risk of
+ * a mistake, but they can't prove other machines can't reach the port. docs/self-hosting.md
+ * explains it for people, and AGENTS.md for coding agents.
  *
  * No Better Auth import, so src/proxy.ts can read it on every request.
  */
@@ -20,7 +21,7 @@ const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
 type Env = Record<string, string | undefined>;
 
-/** Whether an address is this machine: 127.0.0.0/8, ::1, or 127.x written as IPv6. */
+/** Whether an address is a loopback address: 127.0.0.0/8, ::1, or 127.x written as IPv6. */
 export function isLoopbackAddress(ip: string): boolean {
   const a = ip.trim().replace(/^\[|\]$/g, "");
   const v4 = a.startsWith("::ffff:") ? a.slice(7) : a;
@@ -30,8 +31,9 @@ export function isLoopbackAddress(ip: string): boolean {
 
 /**
  * Inside a Docker container, a browser on the host reaches a port published on 127.0.0.1 through
- * the container's default gateway, so that address counts as this machine too. Traffic from
- * anywhere else keeps its own address. Null outside a container or off Linux.
+ * the container's default gateway, so that address is taken as this machine too. A port published
+ * wider can bring other machines' requests in from that address as well, which is one reason the
+ * mode belongs on a port bound to 127.0.0.1. Null outside a container or off Linux.
  */
 export function dockerGateway(): string | null {
   try {
@@ -54,8 +56,9 @@ export function gatewayFromRouteTable(table: string): string | null {
 }
 
 /**
- * Why no-login mode is off for this request, or null when it's on. The reasons are written for the
- * person running the copy: the endpoint shows them, and docs/self-hosting.md lists the same checks.
+ * Why no-login mode is off for this request, or null when it's on. Null means every check passed,
+ * not that the request surely came from this machine. The reasons are written for the person
+ * running the copy: the endpoint shows them, and docs/self-hosting.md lists the same checks.
  */
 export function noLoginRefusal(headers: Headers, env: Env = process.env, gateway: string | null = dockerGateway()): string | null {
   if (env[NO_LOGIN_ENV] !== "1") return `${NO_LOGIN_ENV} isn't set to 1`;

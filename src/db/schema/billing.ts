@@ -94,8 +94,10 @@ export const signupClaims = pgTable("signup_claims", {
 
 /**
  * One Free workspace per site (src/lib/billing/site-claims.ts). A Free workspace's editable
- * project claims its site's registrable domain, stored only as a keyed hash (HMAC under a key
- * derived from SEOPEN_SECRET_KEY), so a guess can't be confirmed without the server's key. Unlike
+ * project claims its site: the registrable domain, or for a shared host, the name under it, so
+ * one.vercel.app and two.vercel.app are two sites (the public suffix list's private domains). Each
+ * is stored only as a keyed hash (HMAC under a key derived from SEOPEN_SECRET_KEY), so a guess
+ * can't be confirmed without the server's key. Unlike
  * trial claims a row is released: moving to a paid plan, archiving or deleting the project, or
  * deleting the workspace (the foreign key) drops it, so a site is never locked for good.
  */

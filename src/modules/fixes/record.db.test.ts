@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import pLimit from "p-limit";
 import { testDb } from "@/db/test-db";
 
 /** Logged changes (`recordChanges`) against seopen_test: one manual record per page, checked and measured like any fix. */
@@ -201,6 +202,30 @@ describe.skipIf(!ready)("logging a change", () => {
     const check = (linkedFrom: string[]) => runLiveCheck({ code: "manual-change", url: "https://fix.example/pricing", detail: null, before: null, evidence: { linked_from: linkedFrom } }, "fix.example");
     expect(await check(["https://elsewhere.example/a", "https://fix.example/b"])).toMatchObject({ state: "cannot_check", status: 404 });
     expect(await check(["https://elsewhere.example/a"])).toMatchObject({ state: "cannot_check", saw: "SEOpen couldn't read /a without JavaScript or at all, so it can't tell whether it links to /pricing.", status: null });
+  });
+
+  it("stops reading linking pages at the deadline, and says it ran out of time", async () => {
+    const clock = { at: Date.now() + 60_000, late: false };
+    // The first page read uses up the time, so the rest are left unread.
+    vi.mocked(safeFetch).mockImplementation(async () => {
+      clock.at = 0;
+      return { url: "", status: 200, headers: {}, body: '<a href="/pricing">plans</a>', truncated: false, redirects: [], ms: 1 };
+    });
+    const fix = { code: "manual-change", url: "https://fix.example/pricing", detail: null, before: null, evidence: { linked_from: ["/a", "/b", "/c"].map((p) => `https://fix.example${p}`) } };
+    expect(await runLiveCheck(fix, "fix.example", new Date(), pLimit(1), clock)).toMatchObject({ state: "cannot_check", saw: "SEOpen ran out of time before it read every page that should link to /pricing." });
+    expect(vi.mocked(safeFetch)).toHaveBeenCalledTimes(1);
+    expect(clock.late).toBe(true);
+  });
+
+  it("leaves a fix it had no time to check as it was, and says how to finish", async () => {
+    const { scope, byId } = await seed();
+    fetched(page("Old"));
+    const [{ id }] = (await recordChanges(scope, actor, { urls: ["/pricing"], expect: "Plans for small teams" })).recorded;
+    vi.mocked(safeFetch).mockClear();
+    const { fixes: [late] } = await verifyFixes(scope, [id!], { deadline: Date.now() - 1 });
+    expect(vi.mocked(safeFetch)).not.toHaveBeenCalled();
+    expect(late).toMatchObject({ status: "applied", live_check: { state: "cannot_check", saw: "SEOpen ran out of time before it read this page." }, google: null, next_step: "SEOpen ran out of time before it finished this check, so nothing changed. To finish it, call verify_fix again." });
+    expect(await byId(id!)).toMatchObject({ status: "applied", liveCheck: null });
   });
 
   it("refuses linked_from with more than one page, off the site, or naming the page itself", async () => {

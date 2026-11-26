@@ -5,13 +5,14 @@
  */
 
 export interface RobotsRule {
-  allow: boolean;
-  pattern: string;
+  readonly allow: boolean;
+  readonly pattern: string;
 }
 
+/** A parsed group's rules are frozen: they're prepared once for matching and shared by every path and crawler. */
 export interface RobotsGroup {
   agents: string[];
-  rules: RobotsRule[];
+  rules: readonly RobotsRule[];
 }
 
 export interface Robots {
@@ -20,9 +21,9 @@ export interface Robots {
 }
 
 export function parseRobots(text: string): Robots {
-  const groups: RobotsGroup[] = [];
+  const groups: { agents: string[]; rules: RobotsRule[] }[] = [];
   const sitemaps: string[] = [];
-  let current: RobotsGroup | null = null;
+  let current: { agents: string[]; rules: RobotsRule[] } | null = null;
   // A run of user-agent lines opens one group; the first rule after them closes the run.
   let collectingAgents = false;
   for (const raw of text.replace(/^﻿/, "").split(/\r\n|\r|\n/)) {
@@ -47,14 +48,14 @@ export function parseRobots(text: string): Robots {
       // An empty disallow allows everything; it adds no rule.
       if (key === "disallow" && !value) continue;
       if (key === "allow" && !value) continue;
-      current.rules.push({ allow: key === "allow", pattern: value });
+      current.rules.push(Object.freeze({ allow: key === "allow", pattern: value }));
     } else if (key === "sitemap") {
       if (value) sitemaps.push(value);
     } else {
       collectingAgents = false;
     }
   }
-  return { groups, sitemaps };
+  return { groups: groups.map((g) => ({ agents: g.agents, rules: Object.freeze(g.rules) })), sitemaps };
 }
 
 /** The groups a crawler with this product token obeys, and whether one named it. */
@@ -65,7 +66,7 @@ function groupsFor(robots: Robots, token: string): { groups: RobotsGroup[]; name
 }
 
 /** The rules a crawler with this product token obeys, and whether a group named it. */
-export function rulesFor(robots: Robots, token: string): { rules: RobotsRule[]; named: boolean } {
+export function rulesFor(robots: Robots, token: string): { rules: readonly RobotsRule[]; named: boolean } {
   const { groups, named } = groupsFor(robots, token);
   return { rules: groups.flatMap((g) => g.rules), named };
 }
@@ -86,10 +87,10 @@ interface ReadyRule {
   anchored: boolean;
 }
 
-/** Each list of rules, ready to match. A list isn't changed once its file is parsed, and is the same for every path and crawler. */
-const ready = new WeakMap<RobotsRule[], ReadyRule[]>();
+/** Each list of rules, ready to match. A parsed list is frozen, and is the same for every path and crawler. */
+const ready = new WeakMap<readonly RobotsRule[], ReadyRule[]>();
 
-function readyRules(rules: RobotsRule[]): ReadyRule[] {
+function readyRules(rules: readonly RobotsRule[]): ReadyRule[] {
   let out = ready.get(rules);
   if (!out) {
     out = rules.map((rule) => {
@@ -195,16 +196,22 @@ function patternMatches({ parts, anchored }: ReadyRule, path: PathText): boolean
 /** Whether `a` decides over `b`, an earlier rule: the longer pattern, and `allow` on a tie. */
 const decidesOver = (a: RobotsRule, b: RobotsRule | null) => !b || a.pattern.length > b.pattern.length || (a.pattern.length === b.pattern.length && a.allow && !b.allow);
 
-function decide(rules: RobotsRule[], path: PathText): RobotsRule | null {
+function decide(rules: readonly RobotsRule[], path: PathText): RobotsRule | null {
   let best: RobotsRule | null = null;
   for (const r of readyRules(rules)) if (decidesOver(r.rule, best) && patternMatches(r, path)) best = r.rule;
   return best;
 }
 
-const pathText = (path: string) => new PathText(canonicalPath(path || "/"));
+/**
+ * The most of a path read: far past any real page's address. A path's index takes memory for every
+ * character, so a longer one is judged on its start.
+ */
+export const MAX_PATH = 8_192;
+
+const pathText = (path: string) => new PathText(canonicalPath(path || "/").slice(0, MAX_PATH));
 
 /** The rule that decides `path`, or null when none matches (allowed). */
-export function decidingRule(rules: RobotsRule[], path: string): RobotsRule | null {
+export function decidingRule(rules: readonly RobotsRule[], path: string): RobotsRule | null {
   return decide(rules, pathText(path));
 }
 

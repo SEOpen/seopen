@@ -13,7 +13,7 @@ import { urlInProperty } from "@/modules/google/inspect-url";
 import { pageKey } from "@/modules/google/matching";
 import { fetchErrorMessage, safeFetch, type FetchResult } from "@/lib/web/fetch";
 import { fixesByIds, crawledPage, type Fix } from "./queries";
-import { linkedFrom, MANUAL_CODE } from "./catalog";
+import { linkedFrom, MANUAL_CODE, pathOf } from "./catalog";
 import { offSiteReason, onProjectDomain } from "./domain";
 import { pageVariants } from "./measure";
 import { checkTarget, linksCheck, linkVerdict, liveCheck, snapshotOf, type LinkSource } from "./live-check";
@@ -27,6 +27,27 @@ export const MAX_VERIFY = 20;
 const FETCH_TIMEOUT_MS = 10_000;
 /** Linking pages fetched and read at once, over a whole call: each can be 2 MB. One fix's all fit. */
 const LINK_PAGES = 20;
+/** How long one `verifyFixes` call reads pages for. CloudFront ends a request at 60 seconds. */
+const VERIFY_DEADLINE_MS = 45_000;
+
+/**
+ * When a check must stop reading pages, in epoch milliseconds. `late` turns true once a page was
+ * left unread for time, so the caller knows the answer isn't the page's.
+ */
+export interface Deadline {
+  at: number;
+  late: boolean;
+}
+
+/** What's left before the deadline, at most one page's timeout. Zero or less marks the check late. */
+function timeLeft(deadline: Deadline | undefined): number {
+  if (!deadline) return FETCH_TIMEOUT_MS;
+  const left = Math.min(FETCH_TIMEOUT_MS, deadline.at - Date.now());
+  if (left <= 0) deadline.late = true;
+  return left;
+}
+
+const OUT_OF_TIME = "SEOpen ran out of time before it read this page.";
 
 type ProjectRef = Pick<typeof projects.$inferSelect, "domain" | "gscProperty">;
 
@@ -309,30 +330,40 @@ export async function reopenFix(scope: ProjectScope, id: number): Promise<void> 
  * Fetches the page and compares it with the finding. A page it can't reach is a page it can't judge.
  * `linkPages` limits the linking pages read at once, shared by the checks of one call.
  */
-export async function runLiveCheck(fix: Pick<Fix, "code" | "url" | "detail" | "before" | "evidence">, domain: string, now = new Date(), linkPages: LimitFunction = pLimit(LINK_PAGES)): Promise<FixLiveCheck> {
+export async function runLiveCheck(fix: Pick<Fix, "code" | "url" | "detail" | "before" | "evidence">, domain: string, now = new Date(), linkPages: LimitFunction = pLimit(LINK_PAGES), deadline?: Deadline): Promise<FixLiveCheck> {
   const checkedAt = now.toISOString();
   const sources = fix.code === MANUAL_CODE ? linkedFrom(fix.evidence) : [];
-  if (sources.length) return runLinksCheck(fix, sources, domain, checkedAt, linkPages);
+  if (sources.length) return runLinksCheck(fix, sources, domain, checkedAt, linkPages, deadline);
   const target = checkTarget(fix.code, fix.url);
   if (!onProjectDomain(target, domain)) return { state: "cannot_check", saw: `${target} isn't on ${domain}, so SEOpen didn't fetch it.`, checkedAt, status: null };
+  const left = timeLeft(deadline);
+  if (left <= 0) return { state: "cannot_check", saw: OUT_OF_TIME, checkedAt, status: null };
   try {
-    const r = await safeFetch(target, { timeoutMs: FETCH_TIMEOUT_MS });
+    const r = await safeFetch(target, { timeoutMs: left });
     const away = offSiteReason(r, domain);
     if (away) return { state: "cannot_check", saw: away, checkedAt, status: r.status };
     return { ...liveCheck(fix, { status: r.status, html: r.body, headers: r.headers }, fix.before), checkedAt, status: r.status };
   } catch (err) {
+    if (deadline && left < FETCH_TIMEOUT_MS && Date.now() >= deadline.at) {
+      deadline.late = true;
+      return { state: "cannot_check", saw: OUT_OF_TIME, checkedAt, status: null };
+    }
     return { state: "cannot_check", saw: fetchErrorMessage(err), checkedAt, status: null };
   }
 }
 
 /** One linking page, fetched and judged, so its HTML needn't be kept. `status` is null when nothing was read. */
-async function readLinkSource(target: string, url: string, domain: string): Promise<LinkSource & { status: number | null }> {
+async function readLinkSource(target: string, url: string, domain: string, deadline?: Deadline): Promise<LinkSource & { status: number | null }> {
   const unread = { url, verdict: "unread", status: null } as const;
   if (!onProjectDomain(url, domain)) return unread;
+  // Checked as the page's turn comes, since it may have waited behind others.
+  const left = timeLeft(deadline);
+  if (left <= 0) return unread;
   let r: FetchResult;
   try {
-    r = await safeFetch(url, { timeoutMs: FETCH_TIMEOUT_MS });
+    r = await safeFetch(url, { timeoutMs: left });
   } catch {
+    if (deadline && left < FETCH_TIMEOUT_MS && Date.now() >= deadline.at) deadline.late = true;
     return unread;
   }
   if (offSiteReason(r, domain)) return unread;
@@ -344,12 +375,14 @@ async function readLinkSource(target: string, url: string, domain: string): Prom
  * they all do, a named `expect` is looked for on the page itself as usual. A few pages at a time,
  * and only what each one said is kept.
  */
-async function runLinksCheck(fix: Pick<Fix, "code" | "url" | "detail" | "before" | "evidence">, sources: string[], domain: string, checkedAt: string, linkPages: LimitFunction): Promise<FixLiveCheck> {
-  const read = await Promise.all(sources.map((url) => linkPages(() => readLinkSource(fix.url, url, domain))));
+async function runLinksCheck(fix: Pick<Fix, "code" | "url" | "detail" | "before" | "evidence">, sources: string[], domain: string, checkedAt: string, linkPages: LimitFunction, deadline?: Deadline): Promise<FixLiveCheck> {
+  const read = await Promise.all(sources.map((url) => linkPages(() => readLinkSource(fix.url, url, domain, deadline))));
   const links = linksCheck(fix.url, read);
   const status = read.find((r) => r.status !== null)?.status ?? null;
+  // A page left unread for time says nothing about the page: say so rather than blame it.
+  if (links.state === "cannot_check" && deadline?.late) return { state: "cannot_check", saw: `SEOpen ran out of time before it read every page that should link to ${pathOf(fix.url)}.`, checkedAt, status };
   if (links.state !== "fixed" || !fix.evidence?.expect) return { ...links, checkedAt, status };
-  const page = await runLiveCheck({ ...fix, evidence: { expect: fix.evidence.expect } }, domain, new Date(checkedAt));
+  const page = await runLiveCheck({ ...fix, evidence: { expect: fix.evidence.expect } }, domain, new Date(checkedAt), undefined, deadline);
   return page.state === "fixed" ? { ...page, saw: `${links.saw} ${page.saw}` } : page;
 }
 
@@ -394,6 +427,17 @@ export interface VerifyOutcome {
   next_step: string;
 }
 
+/** Search Console's answer, or null when it doesn't come before the deadline. The request carries on, and its answer is still saved. */
+async function beforeDeadline<T>(work: Promise<T>, at: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), Math.max(0, at - Date.now()))));
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function nextStep(status: string, check: FixLiveCheck, recrawled: boolean, google: GoogleView | null, again: string): string {
   if (status === "open") return check.state === "fixed" ? "This looks fixed on the live page already. If you changed it, call mark_fix_applied so its results get measured." : "This fix isn't marked applied yet.";
   if (check.state === "page_broken") return "The live page is failing. Look at that before anything else.";
@@ -409,8 +453,10 @@ function nextStep(status: string, check: FixLiveCheck, recrawled: boolean, googl
  * Checks fixes against the live page and Google, and moves an applied fix to live when the change is there.
  * Results keep the order of `ids`. An id with no fix in this project is skipped with the reason, as `dismissFixes` does.
  * `again` is how the caller checks again, in `next_step`: the MCP tool by default, or the app's Check now.
+ * The call stops reading pages at `deadline` (45 seconds from now by default). A fix it didn't finish
+ * is reported as `cannot_check` with the reason, and its record is left as it was.
  */
-export async function verifyFixes(scope: ProjectScope, ids: number[], { again = "call verify_fix again" }: { again?: string } = {}): Promise<{ fixes: VerifyOutcome[]; skipped: { id: number; why: string }[] }> {
+export async function verifyFixes(scope: ProjectScope, ids: number[], { again = "call verify_fix again", deadline = Date.now() + VERIFY_DEADLINE_MS }: { again?: string; deadline?: number } = {}): Promise<{ fixes: VerifyOutcome[]; skipped: { id: number; why: string }[] }> {
   await assertEditable(scope);
   const unique = [...new Set(ids)];
   checkIds(unique, MAX_VERIFY);
@@ -420,12 +466,18 @@ export async function verifyFixes(scope: ProjectScope, ids: number[], { again = 
   if (!rows.length) return { fixes: [], skipped };
   const project = await projectOf(scope);
   const linkPages = pLimit(LINK_PAGES);
-  const checked = await inBatches(rows, 5, async (fix) => {
-    const check = await runLiveCheck(fix, project.domain, new Date(), linkPages);
+  const checked = await inBatches(rows, 5, async (fix): Promise<VerifyOutcome> => {
+    const clock: Deadline = { at: deadline, late: false };
+    const check = await runLiveCheck(fix, project.domain, new Date(), linkPages, clock);
+    if (clock.late) {
+      // Not finished, so nothing is saved, and Google isn't asked about a page SEOpen didn't read.
+      return { id: fix.id, url: fix.url, status: fix.status, live_check: { state: check.state, saw: check.saw }, google: null, next_step: `SEOpen ran out of time before it finished this check, so nothing changed. To finish it, ${again}.` };
+    }
     let google: GoogleView | null = null;
     if (project.gscProperty && urlInProperty(fix.url, project.gscProperty)) {
+      const late: GoogleView = { verdict: null, coverage: null, lastCrawl: null, link: null, error: "Search Console didn't answer in time." };
       try {
-        google = await inspectForFix(scope, project.gscProperty, fix.url);
+        google = Date.now() < deadline ? ((await beforeDeadline(inspectForFix(scope, project.gscProperty, fix.url), deadline)) ?? late) : late;
       } catch (err) {
         console.error("[fixes.verify]", err);
         google = { verdict: null, coverage: null, lastCrawl: null, link: null, error: "Search Console didn't answer." };
