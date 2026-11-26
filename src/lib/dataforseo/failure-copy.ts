@@ -244,11 +244,14 @@ export const CRAWL_NOT_QUEUED = "The crawl couldn't be queued, so it didn't star
 /** Stored when a queued crawl's project was archived, or its workspace suspended, before it was posted. A billing refusal stores its own message. */
 export const CRAWL_NOT_STARTED = "The crawl didn't start, and nothing was charged.";
 
+/** Stored when a finished crawl's results couldn't be saved, after the tries it gets (src/modules/audit/crawl.ts). */
+export const CRAWL_NOT_SAVED = "The crawl finished, but its results couldn't be saved. Start a new one.";
+
 /** Stored when someone stops a crawl before it starts. Their own choice, so it never counts as something needing a look. */
 export const CRAWL_CANCELLED = "Cancelled before it started";
 
 /** SEOpen's own stored crawl failures. Anything else in the column is the vendor's text. */
-const isOwnCrawlFailure = (text: string) => text.startsWith("The crawl stopped: ") || text === "The crawl did not finish within 12 hours." || text === CRAWL_CANCELLED || text === CRAWL_NOT_QUEUED || text === CRAWL_NOT_STARTED;
+const isOwnCrawlFailure = (text: string) => text.startsWith("The crawl stopped: ") || text === "The crawl did not finish within 12 hours." || text === CRAWL_CANCELLED || text === CRAWL_NOT_QUEUED || text === CRAWL_NOT_STARTED || text === CRAWL_NOT_SAVED;
 
 /** What a failed crawl's stored error says to a customer. `retry` means a new crawl could work. */
 export function plainCrawlFailure(stored: string | null): Pick<PlainFailure, "message" | "retry"> {

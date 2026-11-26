@@ -96,6 +96,25 @@ describe.skipIf(!ready)("a crawl's refund", () => {
     expect(await rowOf(row.id)).toMatchObject({ status: "failed", costUsd: 0 });
   });
 
+  it("is taken once, however many polls follow a failed import", async () => {
+    const row = await crawling();
+    dfsGet.mockResolvedValue(summary({ crawl_progress: "finished", crawl_status: { pages_crawled: 4 }, domain_info: { extended_crawl_status: "no_errors" } }));
+    // The import fails each time, on a call that isn't the summary.
+    dfsPost.mockRejectedValue(new Error("socket hang up"));
+
+    for (let poll = 0; poll < 3; poll++) {
+      await expect(pollCrawl(await rowOf(row.id))).rejects.toThrow("socket hang up");
+      expect(await rowOf(row.id)).toMatchObject({ costUsd: expect.closeTo(0.04, 6), costSettledAt: expect.any(Date) });
+    }
+    expect(refunds()).toEqual([expect.closeTo(-0.06, 6)]);
+
+    // And not again when the crawl is closed after it.
+    dfsGet.mockRejectedValue(new DataForSEOError("Task Not Found.", 40401, "on_page/summary"));
+    expect(await pollCrawl(await rowOf(row.id))).toBe("failed");
+    expect(refunds()).toHaveLength(1);
+    expect((await rowOf(row.id)).costUsd).toBeCloseTo(0.04, 6);
+  });
+
   it("that fails to record leaves a finished crawl open instead of done", async () => {
     const row = await crawling();
     dfsGet.mockResolvedValue(summary({ crawl_progress: "finished", crawl_status: { pages_crawled: 3 }, domain_info: { extended_crawl_status: "no_errors" } }));

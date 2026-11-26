@@ -53,6 +53,10 @@ export const auditCrawls = pgTable(
     loadResources: boolean().notNull().default(true),
     estimatedCostUsd: real().notNull().default(0),
     costUsd: real(),
+    /** When the refund for pages the crawl didn't reach was taken off `costUsd`. Taken once: null means not yet. */
+    costSettledAt: timestamp({ withTimezone: true }),
+    /** Imports of the finished crawl that failed. After a few the crawl is closed as failed (crawl.ts). */
+    importAttempts: integer().notNull().default(0),
     pagesCrawled: integer().notNull().default(0),
     pagesInQueue: integer().notNull().default(0),
     healthScore: real(),
