@@ -6,7 +6,7 @@ import { keywordToPrompt, PERSON, suggestTopics } from "@/modules/ai/prompts";
 import { isPlatformSite } from "@/modules/ai/sources";
 import { MAX_SEARCHES, type BusinessType } from "./business";
 import { foreignPlace } from "./places";
-import { townOf, type SiteBusiness, type SiteFacts } from "./site";
+import { shortText, townOf, type SiteBusiness, type SiteFacts } from "./site";
 
 /**
  * The plain setup proposal: competitors
@@ -246,7 +246,10 @@ const MAX_SEEDS = 12;
 /** Selling words at the start of a title: they aren't part of what people search for. */
 const MARKETING = /^(?:the )?(?:best|top|leading|premier|affordable|trusted)\s+/;
 
-/** A price in a title, with the words around it: "From $400/mo", "starting at $99", "$3,500 one-time", "400/mo". Nobody searches for it. */
+/**
+ * A price in a title, with the words around it: "From $400/mo", "starting at $99", "$3,500 one-time", "400/mo". Nobody searches for it.
+ * It backtracks over a long run such as "1.1.1.", so it only meets a title cut to `MAX_TEXT`.
+ */
 const PRICE =
   /(?:\b(?:from|starting (?:at|from)|starts (?:at|from)|only|just|under|as low as|for)\s+)?(?:[$£€]\s?\d[\d,.]*(?:\s?(?:\/\s?|(?:a|an|per)\s+)(?:mo|mth|month|yr|year|wk|week|hr|hour)\b|\s+one[- ]time\b)?|\b\d[\d,.]*\s?\/\s?(?:mo|mth|month|yr|year|wk|week|hr|hour)\b)/gi;
 
@@ -287,7 +290,8 @@ const placesOf = (site: SiteFacts | null) => townsOf(site).map((c) => ({ town: k
 function searchTerms(site: SiteFacts | null, brand: string[]): { phrase: string | null; terms: string[] } {
   const places = placesOf(site);
   if (!site?.title || !places.length) return { phrase: null, terms: [] };
-  const segment = site.title
+  // siteFacts cuts the title already. Cut again here, so a caller that didn't can't make PRICE slow.
+  const segment = shortText(site.title)
     .split(/\s+[|–—:·•-]\s+/)
     .map((s) => keywordForm(s.replace(PRICE, " ")))
     .find((s) => {

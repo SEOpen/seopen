@@ -310,6 +310,15 @@ describe("a local service business named like something else (Glowworm Lab)", ()
     const site: SiteFacts = { title: "24/7 Plumber Riverton TX", description: null, headings: [], business: null, cities: ["Riverton, TX"] };
     expect(mapsKeywords({ domain: "acme.com", projectName: "Acme", site })).toEqual(["24 7 plumber Riverton, TX"]);
   });
+
+  it("reads a 1 MB title in linear time, even one siteFacts didn't cut", () => {
+    for (const title of ["1.".repeat(500_000), "$1,".repeat(333_333), `Web Design Riverton TX ${"9,".repeat(500_000)}`]) {
+      const site: SiteFacts = { title, description: null, headings: [], business: null, cities: ["Riverton, TX"] };
+      const started = Date.now();
+      mapsKeywords({ domain: "acme.com", projectName: "Acme", site });
+      expect(Date.now() - started, title.slice(0, 30)).toBeLessThan(1500);
+    }
+  });
 });
 
 /**
