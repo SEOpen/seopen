@@ -54,8 +54,9 @@ ENV NODE_ENV=production
 # The worker runs TypeScript through tsx and applies drizzle/ migrations, so the image keeps the
 # source and node_modules beside the build. They stay owned by root, so the runtime user can't
 # rewrite the code it runs; it owns only .next/cache, where next start keeps its image and fetch cache,
-# and .next/server/route-cache, where Next 16.4 keeps regenerated pages (sitemaps, OG images, guides).
-# Without the second, each regeneration fails with EACCES and the page is rebuilt on every request.
+# and .next/server/route-cache, where Next 16.4 keeps regenerated pages (sitemaps, OG images, guides)
+# when it writes them to disk. next.config.ts turns that off (isrFlushToDisk), so the folder stays
+# empty; it stays writable so that turning it back on doesn't fail each regeneration with EACCES.
 COPY --from=build /app /app
 RUN mkdir -p /app/.next/cache /app/.next/server/route-cache && chown -R node:node /app/.next/cache /app/.next/server/route-cache
 USER node
