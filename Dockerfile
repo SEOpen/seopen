@@ -9,7 +9,7 @@
 FROM node:24-bookworm-slim AS base
 ENV NEXT_TELEMETRY_DISABLED=1
 # The version in package.json's packageManager field.
-RUN npm install -g pnpm@9.15.9
+RUN npm install -g pnpm@10.34.9
 WORKDIR /app
 
 FROM base AS deps

@@ -5,3 +5,19 @@
 # dependencies; the app imports that code by path (`@/packages/<name>`).
 packages:
   - "src/packages/*"
+
+# Install protections (pnpm 10). A package version must be a week old before it installs, so a
+# hijacked release is usually caught and pulled first. A package that used to come with provenance
+# can't arrive without it, and no dependency of a dependency may come from a git repo or a tarball
+# URL. Dependencies' install scripts don't run unless listed in onlyBuiltDependencies.
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade
+blockExoticSubdeps: true
+# These ship working binaries through optional dependencies, so their install scripts aren't needed
+# (core-js's only prints a message). A new package with an install script makes pnpm warn.
+ignoredBuiltDependencies:
+  - core-js
+  - esbuild
+  - unrs-resolver
+overrides:
+  "@esbuild-kit/core-utils>esbuild": "^0.25.4"
