@@ -13,6 +13,11 @@ const escape = (host: string) => host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
+  // Pages and route answers made at run time (a path outside the built set, its 404 included) stay in
+  // the memory cache, which has a size limit, and aren't also written under .next/server, which has
+  // none: any visitor can ask for any number of made-up paths. What the build wrote is still read
+  // from disk. After a restart a run-time page is made again on its first request.
+  experimental: { isrFlushToDisk: false },
   // Whether this copy has the marketing site (cloud only), so the auth pages link to its home, privacy
   // and terms pages and the waitlist only where they exist (src/lib/hosts.ts, siteLinks).
   env: { SEOPEN_HAS_SITE: hasMarketingSite(process.cwd()) ? "1" : "" },
