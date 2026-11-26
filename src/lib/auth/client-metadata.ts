@@ -38,9 +38,14 @@ const unavailable = (description: string) => new APIError("TOO_MANY_REQUESTS", {
 
 /**
  * Whether the plugin refused a read for lack of budget, not for anything wrong with the document.
- * Read off the error's body: the plugin throws its own copy of the error class, so `instanceof` says no.
+ * Read off the error's body: the plugin throws its own copy of the error class, so `instanceof` says
+ * no. Its wait after a read that failed carries the same code and is not this: an app whose document
+ * has gone must not be served from its row between tries.
  */
-const outOfBudget = (error: unknown) => (error as { body?: { error?: unknown } } | null)?.body?.error === "temporarily_unavailable";
+const outOfBudget = (error: unknown) => {
+  const body = (error as { body?: { error?: unknown; error_description?: unknown } } | null)?.body;
+  return body?.error === "temporarily_unavailable" && /limit exceeded/.test(String(body.error_description ?? ""));
+};
 
 /** Counts one new client ID URL for an address and refuses past the limit. Shared by every instance, in `rate_limits` (see src/modules/fixes/limit.ts). */
 async function countUnknownClient(address: string, now = new Date()): Promise<void> {

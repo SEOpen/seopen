@@ -15,12 +15,15 @@ vi.mock("@/public-signup/server", async (original) => {
   const m = await original<typeof import("@/public-signup/server")>();
   return { ...m, signup: { ...m.signup, onSession: async () => undefined } };
 });
-const net = vi.hoisted(() => ({ fetched: [] as string[] }));
+const net = vi.hoisted(() => ({ fetched: [] as string[], gone: new Set<string>() }));
+// The metadata route waits for a request with `connection()`, which needs Next's request scope.
+vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), connection: async () => {} }));
 vi.mock("@better-auth/cimd/node", () => ({
   fetchClientMetadataResource: async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input);
     net.fetched.push(url);
     if (!new URL(url).hostname.endsWith("connector.example")) throw new TypeError("connect failed");
+    if (net.gone.has(url)) return new Response("Not found", { status: 404 });
     return new Response(
       JSON.stringify({ client_id: url, client_name: "Connector", redirect_uris: ["https://connector.example/callback"], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none" }),
       { status: 200, headers: { "content-type": "application/json" } },
@@ -153,4 +156,18 @@ describe.skipIf(!ready)("client ID metadata documents", () => {
     expect((await app.refresh()).status).toBe(200);
     expect(net.fetched.length).toBe(before);
   }, 60_000);
+
+  it("doesn't serve a connected app from its stored row once its document is gone", async () => {
+    const app = await connectedApp("cimd-gone");
+    later(61);
+    net.gone.add(app.clientId);
+    // The read fails, and the tries that follow inside the plugin's wait are refused too.
+    for (let i = 0; i < 3; i++) expect((await app.refresh()).status, String(i)).not.toBe(200);
+    net.gone.delete(app.clientId);
+  });
+
+  it("still tells apps they may name themselves by URL", async () => {
+    const { GET } = await import("@/app/.well-known/oauth-authorization-server/route");
+    expect(await (await GET(new Request(`${ORIGIN}/.well-known/oauth-authorization-server`))).json()).toMatchObject({ client_id_metadata_document_supported: true });
+  });
 });

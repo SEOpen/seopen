@@ -171,8 +171,11 @@ export const auth = betterAuth({
       // for a request that came to this endpoint: the consent page's answer runs authorize again
       // from inside the provider, with the prompt it has just satisfied taken off, and comes through here too.
       if (ctx.path === "/oauth2/authorize" && ctx.request && new URL(ctx.request.url).pathname.endsWith("/oauth2/authorize")) {
-        const prompt = promptForAuthorize(ctx.query);
-        return prompt ? { context: { query: { ...ctx.query, prompt } } } : undefined;
+        // The provider reads a POST's parameters from its form body and a GET's from the query.
+        const posted = ctx.request.method === "POST";
+        const prompt = promptForAuthorize(posted ? ctx.body : ctx.query);
+        if (!prompt) return;
+        return { context: posted ? { body: { ...ctx.body, prompt } } : { query: { ...ctx.query, prompt } } };
       }
       if (ctx.path !== "/sign-up/email") return;
       const body = await signup.beforeEmailSignUp(ctx.body);

@@ -280,12 +280,31 @@ describe.skipIf(!ready)("OAuth for the MCP endpoint", () => {
       await sdkAuth(asker, { serverUrl: MCP_URL, fetchFn: appFetch });
       const url = new URL(asker.authorizationUrl!);
       url.searchParams.set("scope", "read offline_access");
+      // The SDK asks for the consent page itself. A program after a silent answer wouldn't.
+      url.searchParams.delete("prompt");
       for (const redirect of [CALLBACK, "http://127.0.0.1:51123/callback"]) {
         url.searchParams.set("redirect_uri", redirect);
         const res = await auth.handler(new Request(url, { headers: { cookie: A.cookie } }));
         const to = new URL(res.headers.get("location")!, ORIGIN);
         expect(to.pathname, redirect).toBe("/connect");
         expect(to.searchParams.get("code"), redirect).toBeNull();
+      }
+
+      // The same request sent as a form, which the endpoint also takes.
+      const form = await auth.handler(
+        new Request(`${ORIGIN}/api/auth/oauth2/authorize`, { method: "POST", headers: { cookie: A.cookie, origin: ORIGIN, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(url.searchParams) }),
+      );
+      const formTo = new URL(form.headers.get("location") ?? ((await form.json()) as { url: string }).url, ORIGIN);
+      expect(formTo.pathname).toBe("/connect");
+      expect(formTo.searchParams.get("code")).toBeNull();
+      // With no redirect URI, or with a request object or a pushed request, nothing is issued either.
+      for (const change of [(u: URL) => u.searchParams.delete("redirect_uri"), (u: URL) => u.searchParams.set("request", "x.y.z"), (u: URL) => u.searchParams.set("request_uri", "urn:example:request")]) {
+        const other = new URL(url);
+        change(other);
+        const res = await auth.handler(new Request(other, { headers: { cookie: A.cookie } }));
+        const to = new URL(res.headers.get("location")!, ORIGIN);
+        expect(to.searchParams.get("code")).toBeNull();
+        expect(to.searchParams.get("error")).toBeTruthy();
       }
 
       // Signed out, the request still ends on the consent page once the person has signed in.
