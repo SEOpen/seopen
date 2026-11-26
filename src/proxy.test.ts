@@ -188,6 +188,16 @@ describe("accounts", () => {
   });
 });
 
+describe("request bodies", () => {
+  it("refuses a body declared longer than the proxy takes, before anything else, on every path", async () => {
+    for (const url of ["https://getseopen.com/api/mcp", "https://getseopen.com/ingest/e/", "https://getseopen.com/api/auth/sign-in/email", "https://getseopen.com/rank"]) {
+      const res = await proxy(new NextRequest(url, { method: "POST", headers: { "content-length": String(2 * 1024 * 1024) } }));
+      expect(res.status, url).toBe(413);
+    }
+    expect(getSession).not.toHaveBeenCalled();
+  });
+});
+
 describe("split hosts (the app host; next.config.ts handles the site host)", () => {
   beforeEach(() => {
     vi.stubEnv("SEOPEN_SITE_HOST", "getseopen.com");

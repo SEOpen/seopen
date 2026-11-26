@@ -7,6 +7,7 @@ import { noLoginAllowed } from "@/lib/auth/no-login";
 import { isAuthPage } from "@/lib/auth/redirect";
 import { isAppPath, splitHosts } from "@/lib/hosts";
 import { PROJECT_COOKIE, PROJECT_COOKIE_OPTIONS, projectIdFromPath } from "@/lib/project-cookie";
+import { declaresTooLargeBody } from "@/lib/web/body-limit";
 import { withClientIpHeader } from "@/lib/web/client-ip";
 
 /**
@@ -19,6 +20,9 @@ import { withClientIpHeader } from "@/lib/web/client-ip";
 export async function proxy(request: NextRequest) {
   const { pathname, search, hostname } = request.nextUrl;
   const hosts = splitHosts();
+
+  // Next would hand on only the first part of such a body (src/lib/web/body-limit.ts): refuse it whole.
+  if (declaresTooLargeBody(request.headers)) return new NextResponse("Request body too large.", { status: 413 });
 
   // A self-hosted copy opened at localhost when it lives at 127.0.0.1 (or the reverse): sign-in trusts one origin.
   // The Host header, not nextUrl: Next rewrites 127.0.0.1 and [::1] in nextUrl to "localhost".
