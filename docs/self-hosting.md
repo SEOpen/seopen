@@ -77,14 +77,19 @@ Back it up while it runs, from the folder with `compose.yaml`:
 docker compose exec -T postgres pg_dump -U seopen -d seopen -Fc > seopen-$(date +%F).dump
 ```
 
-To restore one, stop the web app and the worker, restore, then start everything again. The restore
-replaces what the database holds with what the backup holds:
+To restore one, stop the web app and the worker, make the database again empty, restore into it,
+then start everything again. Everything the database holds now is replaced by what the backup holds:
 
 ```bash
 docker compose stop web worker
-docker compose exec -T postgres pg_restore -U seopen -d seopen --clean --if-exists --no-owner < seopen-2026-11-26.dump
+docker compose exec -T postgres dropdb -U seopen --force seopen
+docker compose exec -T postgres createdb -U seopen seopen
+docker compose exec -T postgres pg_restore -U seopen -d seopen --no-owner < seopen-2026-11-26.dump
 docker compose up -d
 ```
+
+Restore into an empty database like this rather than with `pg_restore --clean`: the job queue's
+tables are partitioned, and `--clean` stops on them with errors.
 
 Keep backups on another machine, and keep a copy of `.env` with them. `SEOPEN_SECRET_KEY` encrypts
 the stored Google tokens, so a database restored without the same key has to connect Google again.

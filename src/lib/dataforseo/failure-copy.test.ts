@@ -439,7 +439,7 @@ describe("on a self-hosted copy", () => {
     const failure = plainFailure(new DataForSEOError("DataForSEO credentials are missing: DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD aren't set", 0, ""));
     expect(failure).toEqual({
       title: "DataForSEO isn't set up yet",
-      message: "Add your DataForSEO API login and password to DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in the env file, then restart SEOpen.",
+      message: "Add your DataForSEO API login and password to DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in the env file, then restart SEOpen (in Docker: docker compose up -d).",
       retry: false,
     });
   });

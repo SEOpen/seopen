@@ -73,7 +73,7 @@ function accountFix(problem: AccountProblem, statusCode: number): string {
   if (isHostedService()) return OUR_SIDE;
   switch (problem) {
     case "missing":
-      return "Add your DataForSEO API login and password to DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in the env file, then restart SEOpen.";
+      return "Add your DataForSEO API login and password to DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in the env file, then restart SEOpen (in Docker: docker compose up -d).";
     case "login":
       return `DataForSEO didn't accept the login in the env file. DATAFORSEO_PASSWORD takes the API password from ${DFS_DASHBOARD}/api-access, not the account one.`;
     case "funds":
@@ -107,7 +107,7 @@ function knownFailure(error: unknown): PlainFailure | null {
     if (error.reason !== "not_configured") return { title: "Google isn't connected", message: error.message, retry: false };
     return {
       title: "Google isn't connected",
-      message: isHostedService() ? "Google sign-in isn't set up on this server." : "Add a Google OAuth client to GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the env file, then restart SEOpen. docs/google.md has the steps.",
+      message: isHostedService() ? "Google sign-in isn't set up on this server." : "Add a Google OAuth client to GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the env file, then restart SEOpen (in Docker: docker compose up -d). docs/google.md has the steps.",
       retry: false,
     };
   }
