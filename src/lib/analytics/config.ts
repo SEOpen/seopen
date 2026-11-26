@@ -1,10 +1,10 @@
 /**
- * PostHog settings, read from process.env and importing nothing, so next.config.ts can use them
- * for the /ingest rewrites. Without NEXT_PUBLIC_POSTHOG_KEY analytics is off: the app renders no
+ * PostHog settings, read from process.env and importing nothing, so src/proxy.ts can use them
+ * for the /ingest relay. Without NEXT_PUBLIC_POSTHOG_KEY analytics is off: the app renders no
  * script and the server sends nothing, so local dev and tests need no setup.
  */
 
-/** First-party path the browser sends events to; next.config.ts rewrites it to PostHog. */
+/** First-party path the browser sends events to; src/proxy.ts relays it to PostHog. */
 export const INGEST_PATH = "/ingest";
 
 const DEFAULT_HOST = "https://us.i.posthog.com";
@@ -40,11 +40,20 @@ export function posthogUiHost(host = posthogHost()): string {
   return host.replace(/^https:\/\/(us|eu)\.i\.posthog\.com$/, "https://$1.posthog.com");
 }
 
-/** The reverse proxy, so ad blockers that drop *.posthog.com requests don't drop our events. */
-export function ingestRewrites() {
-  return [
-    { source: `${INGEST_PATH}/static/:path*`, destination: `${posthogAssetsHost()}/static/:path*` },
-    { source: `${INGEST_PATH}/array/:path*`, destination: `${posthogAssetsHost()}/array/:path*` },
-    { source: `${INGEST_PATH}/:path*`, destination: `${posthogHost()}/:path*` },
-  ];
+/** Whether this copy sends anything to PostHog at all. Unlike the keys above, true in tests when a key is set. */
+export function analyticsOn(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY?.trim() || process.env.NEXT_PUBLIC_POSTHOG_SITE_KEY?.trim());
+}
+
+/**
+ * The reverse proxy, so ad blockers that drop *.posthog.com requests don't drop our events: where a
+ * request under /ingest goes at PostHog, or null when it goes nowhere. src/proxy.ts is the only
+ * caller and the only way there, so no request reaches PostHog with headers it did not choose.
+ * Null for /ingest itself, for another letter case, and on a copy with analytics off.
+ */
+export function ingestDestination(pathname: string, search = ""): string | null {
+  if (!analyticsOn() || !pathname.startsWith(`${INGEST_PATH}/`)) return null;
+  const rest = pathname.slice(INGEST_PATH.length);
+  const host = rest.startsWith("/static/") || rest.startsWith("/array/") ? posthogAssetsHost() : posthogHost();
+  return `${host}${rest}${search}`;
 }

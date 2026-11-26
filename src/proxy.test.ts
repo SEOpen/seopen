@@ -152,6 +152,7 @@ describe("accounts", () => {
   });
 
   it("relays analytics without a session or a session lookup", async () => {
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_test");
     const res = await get("https://getseopen.com/ingest/e/?ip=0", "account");
     expect(getRedirectUrl(res)).toBeNull();
     expect(res.status).toBe(200);
@@ -159,6 +160,7 @@ describe("accounts", () => {
   });
 
   it("relays analytics with only the headers PostHog needs", async () => {
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_test");
     const request = new NextRequest("https://getseopen.com/ingest/e/", {
       method: "POST",
       headers: {
@@ -221,19 +223,63 @@ describe("split hosts (the app host; next.config.ts handles the site host)", () 
     expect((await get("https://app.getseopen.com/", "account")).status).toBe(200);
   });
 
-  it("keeps the analytics relay on the app host", async () => {
-    const res = await get("https://app.getseopen.com/ingest/flags/?v=2");
-    expect(getRedirectUrl(res)).toBeNull();
-    expect(res.status).toBe(200);
-  });
+  describe("the analytics relay", () => {
+    const sent = (res: Response) => res.headers.get("x-middleware-override-headers")?.split(",") ?? [];
+    const to = (res: Response) => res.headers.get("x-middleware-rewrite");
+    const relay = (url: string, headers: Record<string, string> = {}) => proxy(new NextRequest(url, { method: "POST", headers }));
+    const secrets = { cookie: "better-auth.session_token=abc", authorization: "Bearer abc", "x-edge-to-app-proof": "shared-secret", "user-agent": "test" };
 
-  it("trims the relay's headers on the site host too, the one path of it that runs here", async () => {
-    const request = new NextRequest("https://getseopen.com/ingest/e/", { headers: { "user-agent": "test", "x-edge-to-app-proof": "shared-secret" } });
-    const forwarded = (await proxy(request)).headers.get("x-middleware-override-headers")?.split(",") ?? [];
-    expect(forwarded).toContain("user-agent");
-    expect(forwarded).not.toContain("x-edge-to-app-proof");
-    expect(unstable_doesMiddlewareMatch({ config, url: "https://getseopen.com/ingest/e/" })).toBe(true);
-    expect(unstable_doesMiddlewareMatch({ config, url: "https://getseopen.com/pricing" })).toBe(false);
+    beforeEach(() => vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_test"));
+
+    it("sends events and scripts to PostHog from both hosts, path, slash and query kept", async () => {
+      expect(to(await relay("https://app.getseopen.com/ingest/flags/?v=2"))).toBe("https://us.i.posthog.com/flags/?v=2");
+      expect(to(await relay("https://getseopen.com/ingest/e/"))).toBe("https://us.i.posthog.com/e/");
+      expect(to(await relay("https://getseopen.com/ingest/static/array.js"))).toBe("https://us-assets.i.posthog.com/static/array.js");
+      expect(to(await relay("https://app.getseopen.com/ingest/array/phc_test/config.js"))).toBe("https://us-assets.i.posthog.com/array/phc_test/config.js");
+    });
+
+    it("passes on only the headers PostHog needs, on both hosts", async () => {
+      for (const url of ["https://getseopen.com/ingest/e/", "https://app.getseopen.com/ingest/e/"]) {
+        const forwarded = sent(await relay(url, secrets));
+        expect(forwarded).toEqual(["user-agent"]);
+      }
+    });
+
+    it("answers /ingest itself with a 404 and sends nothing on", async () => {
+      for (const url of ["https://getseopen.com/ingest", "https://app.getseopen.com/ingest", "https://app.getseopen.com/ingest?x=1"]) {
+        const res = await relay(url, secrets);
+        expect(res.status).toBe(404);
+        expect(to(res)).toBeNull();
+      }
+    });
+
+    it("runs for /ingest and everything under it on the site host, and for nothing else there", () => {
+      for (const path of ["/ingest", "/ingest/", "/ingest/e/", "/ingest/static/array.js"]) {
+        expect(unstable_doesMiddlewareMatch({ config, url: `https://getseopen.com${path}` })).toBe(true);
+      }
+      expect(unstable_doesMiddlewareMatch({ config, url: "https://getseopen.com/pricing" })).toBe(false);
+    });
+
+    it("has no other way to PostHog: next.config.ts rewrites nothing under /ingest", async () => {
+      const { default: nextConfig } = await import("../next.config");
+      const rewrites = await nextConfig.rewrites!();
+      const all = Array.isArray(rewrites) ? rewrites : [...(rewrites.beforeFiles ?? []), ...(rewrites.afterFiles ?? []), ...(rewrites.fallback ?? [])];
+      expect(all.filter((rule) => /ingest|posthog/i.test(`${rule.source} ${rule.destination}`))).toEqual([]);
+    });
+
+    it("sends nothing from a copy with analytics off", async () => {
+      vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "");
+      vi.stubEnv("NEXT_PUBLIC_POSTHOG_SITE_KEY", "");
+      const res = await relay("https://app.getseopen.com/ingest/e/", secrets);
+      expect(res.status).toBe(404);
+      expect(to(res)).toBeNull();
+    });
+
+    it("needs no session", async () => {
+      const res = await relay("https://app.getseopen.com/ingest/e/");
+      expect(getRedirectUrl(res)).toBeNull();
+      expect(res.status).toBe(200);
+    });
   });
 
   it("treats other hosts (previews) as one host", async () => {

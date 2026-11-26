@@ -139,19 +139,12 @@ describe("next.config.ts host rules", () => {
     }
     expect(getRedirectUrl(await at("https://preview.seopen.example/pricing", false))).toBeNull();
     expect(getRedirectUrl(await at("https://preview.seopen.example/", false))).toBeNull();
-    const ingest = await at("https://preview.seopen.example/ingest/e/", false);
-    expect(getRedirectUrl(ingest)).toBeNull();
-    expect(isRewrite(ingest)).toBe(true);
-    // Rewrites drop the slash on the way out; PostHog takes /e and /e/ alike. What matters is no 308.
-    expect(getRewrittenUrl(ingest)).toBe("https://us.i.posthog.com/e");
-    expect(getRewrittenUrl(await at("https://preview.seopen.example/ingest/static/array.js", false))).toBe("https://us-assets.i.posthog.com/static/array.js");
-  });
-
-  it("relays analytics to PostHog on both hosts", async () => {
-    const site = await at("https://getseopen.com/ingest/e/");
-    expect(getRedirectUrl(site)).toBeNull();
-    expect(getRewrittenUrl(site)).toBe("https://us.i.posthog.com/e");
-    expect(getRewrittenUrl(await at("https://app.getseopen.com/ingest/flags/?v=2"))).toBe("https://us.i.posthog.com/flags?v=2");
+    // No redirect and no rewrite from the config: src/proxy.ts relays /ingest itself (src/proxy.test.ts).
+    for (const [url, split] of [["https://preview.seopen.example/ingest/e/", false], ["https://getseopen.com/ingest/e/", true], ["https://app.getseopen.com/ingest/flags/?v=2", true]] as const) {
+      const ingest = await at(url, split);
+      expect(getRedirectUrl(ingest), url).toBeNull();
+      expect(isRewrite(ingest), url).toBe(false);
+    }
   });
 
   it("adds no host rules on one host", async () => {
