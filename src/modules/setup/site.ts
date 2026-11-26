@@ -31,7 +31,7 @@ export interface SiteFacts {
 
 const MAX_HEADINGS = 20;
 /** The most kept of a title or description. Far past what any search result shows. */
-const MAX_TEXT = 2_000;
+export const MAX_TEXT = 2_000;
 /** The longest heading, or name in structured data, that's read as one. */
 const MAX_NAME = 200;
 const MAX_CITIES = 5;
@@ -266,11 +266,18 @@ export function comparedSites(page: string, domain: string): string[] {
   return out;
 }
 
+/** `text` cut to `max` characters, one short when the cut would split an emoji (a surrogate pair) in two. */
+export function shortText(text: string, max = MAX_TEXT): string {
+  if (text.length <= max) return text;
+  const last = text.charCodeAt(max - 1);
+  return text.slice(0, last >= 0xd800 && last <= 0xdbff ? max - 1 : max);
+}
+
 export function siteFacts(html: string): SiteFacts {
   const facts = pageFacts(html);
-  const description = facts.description?.slice(0, MAX_TEXT) ?? null;
+  const description = facts.description == null ? null : shortText(facts.description);
   return {
-    title: facts.title?.slice(0, MAX_TEXT) ?? null,
+    title: facts.title == null ? null : shortText(facts.title),
     description,
     headings: headings(html),
     business: localBusiness(html),

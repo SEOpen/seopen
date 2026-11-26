@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comparedSites, headings, linkedTopics, localBusiness, servedCities, siteFacts, describedOffer, serviceNames } from "./site";
+import { comparedSites, headings, linkedTopics, localBusiness, servedCities, shortText, siteFacts, describedOffer, serviceNames } from "./site";
 
 const ld = (v: unknown) => `<script type="application/ld+json">${JSON.stringify(v)}</script>`;
 
@@ -179,5 +179,28 @@ describe("hostile homepages", () => {
     expect([facts.title?.length, facts.description?.length]).toEqual([2_000, 2_000]);
     expect(facts.business).toBeNull();
     expect(facts.cities).toEqual(["Riverton"]);
+  });
+});
+
+describe("setup caps", () => {
+  it("cuts a title without splitting an emoji in two", () => {
+    const title = `${"x".repeat(1_999)}😀 and more`;
+    const cut = siteFacts(`<head><title>${title}</title></head>`).title!;
+    expect(cut).toBe("x".repeat(1_999));
+    expect(shortText(`ab😀`, 3)).toBe("ab");
+    expect(shortText(`ab😀`, 4)).toBe("ab😀");
+    expect(shortText("abc", 3)).toBe("abc");
+  });
+
+  it("keeps 20 headings, and skips one too long to be a name", () => {
+    const html = `<h1>${"x".repeat(201)}</h1>` + Array.from({ length: 30 }, (_, i) => `<h2>Service ${i}</h2>`).join("");
+    expect(headings(html)).toEqual(Array.from({ length: 20 }, (_, i) => `Service ${i}`));
+  });
+
+  it("compares at most 200 sites off one comparison page", () => {
+    const html = Array.from({ length: 300 }, (_, i) => `<a href="/vs/rival${i}">x</a><a href="https://rival${i}.example/">x</a>`).join("");
+    const found = comparedSites(html, "acme.com");
+    expect(found).toHaveLength(200);
+    expect(found[0]).toBe("rival0.example");
   });
 });
