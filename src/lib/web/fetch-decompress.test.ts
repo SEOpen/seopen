@@ -12,8 +12,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const server = vi.hoisted(() => ({ respond: (_res: import("node:http").ServerResponse) => {} }));
 
 vi.mock("node:http", async (original) => {
-  const real = await original<typeof import("node:http")>();
-  const http = real.default ?? real;
+  type Http = typeof import("node:http");
+  const real = await original<Http & { default?: Http }>();
+  const http: Http = real.default ?? real;
   const stub = (s: object) => Object.assign(s, { setTimeout: () => s, setKeepAlive: () => s, setNoDelay: () => s, ref: () => s, unref: () => s });
   const origin = http.createServer((_req, res) => server.respond(res));
   const request = (url: URL, opts: object, onResponse: (res: import("node:http").IncomingMessage) => void) =>
