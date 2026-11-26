@@ -222,9 +222,10 @@ describe.skipIf(!ready)("a check whose job is lost", () => {
   });
 
   it("is closed by the AI poller after a day, and not before", async () => {
-    const { scope } = await seed("starter");
+    // Two projects: one has at most one run in progress.
+    const [{ scope }, { scope: other }] = [await seed("starter"), await seed("starter")];
     const [fresh] = await db.insert(s.aiRuns).values({ ...scope, startedAt: ago(23 * HOUR) }).returning();
-    const [lost] = await db.insert(s.aiRuns).values({ ...scope, startedAt: ago(25 * HOUR) }).returning();
+    const [lost] = await db.insert(s.aiRuns).values({ ...other, startedAt: ago(25 * HOUR) }).returning();
     await closeStaleQueuedRuns();
     expect((await aiRow(fresh.id)).status).toBe("queued");
     expect(await aiRow(lost.id)).toMatchObject({ status: "failed", error: POSTING_NEVER_FINISHED });

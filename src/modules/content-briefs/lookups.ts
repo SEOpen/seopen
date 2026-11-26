@@ -9,7 +9,7 @@ import { fetchErrorMessage, safeFetch } from "@/lib/web/fetch";
 import { inScope, type ProjectScope } from "@/lib/workspace";
 import { gscDataRange } from "@/modules/google/data";
 import { addDays } from "@/modules/google/windowing";
-import { peek, pendingCost, type DfsSpec } from "@/modules/keywords/dfs";
+import { peek, pendingSpecs, type DfsSpec } from "@/modules/keywords/dfs";
 import { labsCost, questionsSpec, serpSpec, keywordOverviewSpec, type Market } from "@/modules/keywords/requests";
 import type { SerpResult } from "@/modules/keywords/types";
 import { plainLine, pageHeadings } from "./headings";
@@ -58,6 +58,8 @@ export interface LookupPlan {
   questions: DfsSpec;
   /** What the lookups not saved yet cost. 0 when everything is saved. */
   usd: number;
+  /** Those lookups: the only ones the price covers, so the only ones a brief may buy. */
+  unpaid: DfsSpec[];
 }
 
 /** Whether every one of a saved top 10's first 3 organic results has its real address, so the brief can read them all. */
@@ -87,8 +89,8 @@ export async function planLookups(keyword: string, merged: string[], m: Market, 
     serpAio: serp === aio,
     questions: ideasHit ? ideas : briefQuestionsSpec(keyword, m),
   };
-  const usd = await pendingCost([plan.overview, ...(plan.merged ? [plan.merged] : []), plan.serp, plan.questions], workspaceId);
-  return { ...plan, usd };
+  const unpaid = await pendingSpecs([plan.overview, ...(plan.merged ? [plan.merged] : []), plan.serp, plan.questions], workspaceId);
+  return { ...plan, usd: unpaid.reduce((sum, spec) => sum + spec.estUsd, 0), unpaid };
 }
 
 /** How long reading one competitor page may take. */

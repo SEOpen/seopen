@@ -18,7 +18,7 @@ import { withBillingContext } from "@/lib/billing/context";
 import { auditJavascript, auditPageLimit } from "@/lib/billing/gates";
 import { loadBillingWorkspace } from "@/lib/billing/workspace";
 import { BudgetExceededError, DataForSEOError, dfsGet, dfsPost, recordLedgerAdjustment, TTL, type DfsResponse } from "@/lib/dataforseo/client";
-import { CRAWL_CANCELLED, CRAWL_NOT_QUEUED, CRAWL_NOT_STARTED, storedFailure } from "@/lib/dataforseo/failure-copy";
+import { CRAWL_CANCELLED, CRAWL_NOT_QUEUED, CRAWL_NOT_SAVED, CRAWL_NOT_STARTED, storedFailure } from "@/lib/dataforseo/failure-copy";
 import type { Project } from "@/lib/projects";
 import { syncAuditFixes } from "@/modules/fixes/sync";
 import { safeFetch } from "@/lib/web/fetch";
@@ -400,7 +400,9 @@ async function forceStop(crawl: AuditCrawl): Promise<void> {
 
 /**
  * DataForSEO charges for max_crawl_pages up front and refunds unused pages when the crawl ends.
- * Records that refund once; the update is conditional on the charged amount, so reruns do nothing.
+ * Records that refund once: the update only matches a crawl with no `costSettledAt` and sets it, so
+ * a rerun does nothing, whatever `costUsd` reads by then. (It used to match on the charged amount,
+ * which this function rewrites, so each poll after a failed import refunded again from the lower figure.)
  * The row and the ledger change in one transaction, so a failed ledger write leaves the refund for
  * the next poll. Callers settle before they close the crawl, which the poller would never look at again.
  */
@@ -411,8 +413,8 @@ async function settleCost(crawl: AuditCrawl, pagesCrawled: number): Promise<void
   await db.transaction(async (tx) => {
     const [row] = await tx
       .update(auditCrawls)
-      .set({ costUsd: actual })
-      .where(and(eq(auditCrawls.id, crawl.id), sql`${auditCrawls.costUsd} = ${charged}::real`))
+      .set({ costUsd: actual, costSettledAt: new Date() })
+      .where(and(eq(auditCrawls.id, crawl.id), isNull(auditCrawls.costSettledAt)))
       .returning({ id: auditCrawls.id });
     if (!row) return;
     await recordLedgerAdjustment(
@@ -578,11 +580,50 @@ async function fetchContentMatches(crawl: AuditCrawl, urls: string[]): Promise<C
   return out;
 }
 
+/**
+ * A copy with every NUL character removed, from strings nested in arrays and objects too. Postgres
+ * refuses one in text and in jsonb, and these values come from the audited site (its robots.txt, its
+ * tags), so one stray byte would fail the whole import.
+ */
+export function withoutNul<T>(value: T): T {
+  if (typeof value === "string") return value.replaceAll("\u0000", "") as T;
+  if (Array.isArray(value)) return value.map(withoutNul) as T;
+  if (value && typeof value === "object" && !(value instanceof Date)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, withoutNul(v)])) as T;
+  return value;
+}
+
 async function insertChunked<T extends object>(table: Parameters<typeof db.insert>[0], rows: T[], size = 400) {
   for (let i = 0; i < rows.length; i += size) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await db.insert(table).values(rows.slice(i, i + size) as any);
+    await db.insert(table).values(rows.slice(i, i + size).map(withoutNul) as any);
   }
+}
+
+/** Failed imports a crawl gets before it is closed as failed. The poller would otherwise try again on every run. */
+const MAX_IMPORT_ATTEMPTS = 5;
+
+/** Postgres refused the data itself (classes 22 and 23) or a size limit (54): the same rows fail the same way next time. */
+function isDataError(err: unknown): boolean {
+  for (let e = err; e instanceof Error; e = e.cause) {
+    if (/^(22|23|54)/.test((e as Error & { code?: string }).code ?? "")) return true;
+  }
+  return false;
+}
+
+/**
+ * Counts a failed import and closes the crawl when another try can't help: Postgres refused the
+ * data, or this was the last try. True when it closed the crawl.
+ */
+async function importGaveUp(crawl: AuditCrawl, err: unknown): Promise<boolean> {
+  const [row] = await db
+    .update(auditCrawls)
+    .set({ importAttempts: sql`${auditCrawls.importAttempts} + 1` })
+    .where(eq(auditCrawls.id, crawl.id))
+    .returning({ attempts: auditCrawls.importAttempts });
+  if (!isDataError(err) && (row?.attempts ?? 0) < MAX_IMPORT_ATTEMPTS) return false;
+  console.error(`[audit] import of crawl ${crawl.id} failed for good`, err);
+  await fail(crawl.id, new Error(CRAWL_NOT_SAVED));
+  return true;
 }
 
 /** Copies a finished crawl into Postgres, detects issues and scores it. Safe to run again. */
@@ -688,7 +729,7 @@ export async function importCrawl(crawl: AuditCrawl, summary: DfsSummary): Promi
       warnings: score.warnings,
       notices: score.notices,
       pagesWithIssues: score.pagesWithIssues,
-      summary: { ...summarySubset(summary), access: access.report },
+      summary: withoutNul({ ...summarySubset(summary), access: access.report }),
       finishedAt: new Date(),
     })
     .where(eq(auditCrawls.id, crawl.id));
@@ -744,7 +785,12 @@ export async function pollCrawl(crawl: AuditCrawl): Promise<"running" | "done" |
         .where(eq(auditCrawls.id, crawl.id));
       return "failed";
     }
-    await importCrawl(crawl, summary);
+    try {
+      await importCrawl(crawl, summary);
+    } catch (err) {
+      if (await importGaveUp(crawl, err)) return "failed";
+      throw err;
+    }
     return "done";
   } catch (err) {
     // Expired or unknown task ids can never recover; transient errors are retried on the next poll.

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { auth as sdkAuth, Client, StreamableHTTPClientTransport, type OAuthClientProvider, type OAuthDiscoveryState, type OAuthTokens, type StoredOAuthClientInformation, type StoredOAuthTokens } from "@modelcontextprotocol/client";
-import { and, eq } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { testDb } from "@/db/test-db";
 
@@ -29,6 +29,8 @@ const { db } = await import("@/db");
 const s = await import("@/db/schema");
 const keys = await import("./keys");
 const oauth = await import("./oauth");
+const grants = await import("@/lib/auth/oauth-grants");
+const { revokeAgentAccess } = await import("@/lib/auth/revoke-agents");
 const { auth } = await import("@/lib/auth");
 const { POST, GET } = await import("@/app/api/mcp/route");
 const prm = await import("@/app/.well-known/oauth-protected-resource/api/mcp/route");
@@ -269,6 +271,69 @@ describe.skipIf(!ready)("OAuth for the MCP endpoint", () => {
       const body = (await signIn.json()) as { redirect?: boolean; url?: string };
       expect(body.redirect).toBe(true);
       expect(new URL(body.url!, ORIGIN).pathname).toBe("/connect");
+    });
+
+    it("asks again when a connected app comes back to a callback on the machine itself, whatever the port, and never answers it with no page", async () => {
+      // The app A connected asks for what its consent already covers.
+      const asker = new MemoryProvider();
+      asker.info = appA.info;
+      await sdkAuth(asker, { serverUrl: MCP_URL, fetchFn: appFetch });
+      const url = new URL(asker.authorizationUrl!);
+      url.searchParams.set("scope", "read offline_access");
+      // The SDK asks for the consent page itself. A program after a silent answer wouldn't.
+      url.searchParams.delete("prompt");
+      for (const redirect of [CALLBACK, "http://127.0.0.1:51123/callback"]) {
+        url.searchParams.set("redirect_uri", redirect);
+        const res = await auth.handler(new Request(url, { headers: { cookie: A.cookie } }));
+        const to = new URL(res.headers.get("location")!, ORIGIN);
+        expect(to.pathname, redirect).toBe("/connect");
+        expect(to.searchParams.get("code"), redirect).toBeNull();
+      }
+
+      // The same request sent as a form, which the endpoint also takes.
+      const form = await auth.handler(
+        new Request(`${ORIGIN}/api/auth/oauth2/authorize`, { method: "POST", headers: { cookie: A.cookie, origin: ORIGIN, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(url.searchParams) }),
+      );
+      const formTo = new URL(form.headers.get("location") ?? ((await form.json()) as { url: string }).url, ORIGIN);
+      expect(formTo.pathname).toBe("/connect");
+      expect(formTo.searchParams.get("code")).toBeNull();
+      // With no redirect URI, or with a request object or a pushed request, nothing is issued either.
+      for (const change of [(u: URL) => u.searchParams.delete("redirect_uri"), (u: URL) => u.searchParams.set("request", "x.y.z"), (u: URL) => u.searchParams.set("request_uri", "urn:example:request")]) {
+        const other = new URL(url);
+        change(other);
+        const res = await auth.handler(new Request(other, { headers: { cookie: A.cookie } }));
+        const to = new URL(res.headers.get("location")!, ORIGIN);
+        expect(to.searchParams.get("code")).toBeNull();
+        expect(to.searchParams.get("error")).toBeTruthy();
+      }
+
+      // Signed out, the request still ends on the consent page once the person has signed in.
+      const signedOut = await auth.handler(new Request(url));
+      const signInPage = new URL(signedOut.headers.get("location")!, ORIGIN);
+      expect(signInPage.pathname).toBe("/sign-in");
+      const signIn = await auth.handler(
+        new Request(`${ORIGIN}/api/auth/sign-in/email`, {
+          method: "POST",
+          headers: { origin: ORIGIN, "content-type": "application/json" },
+          body: JSON.stringify({ email: A.user.email, password: PASSWORD, oauth_query: signInPage.search.slice(1) }),
+        }),
+      );
+      expect(new URL(((await signIn.json()) as { url: string }).url, ORIGIN).pathname).toBe("/connect");
+
+      // A request for no page at all is refused, not answered with a code.
+      url.searchParams.set("prompt", "none");
+      const silent = await auth.handler(new Request(url, { headers: { cookie: A.cookie } }));
+      expect(silent.status).toBe(400);
+      expect(silent.headers.get("location")).toBeNull();
+      expect(await silent.json()).toMatchObject({ error: "consent_required" });
+
+      // An app whose callback is a site keeps its stored consent: only that site receives the code.
+      expect(grants.promptForAuthorize({ redirect_uri: "https://app.example/cb" })).toBeNull();
+      expect(grants.promptForAuthorize({ redirect_uri: "https://localhost/cb" })).toBeNull();
+      expect(grants.promptForAuthorize({ redirect_uri: "http://localhost:9/cb", prompt: "login" })).toBe("login consent");
+      expect(grants.promptForAuthorize({ redirect_uri: "http://[::1]:9/cb" })).toBe("consent");
+      expect(grants.promptForAuthorize({ redirect_uri: "cursor://anysphere.cursor-mcp/oauth/callback" })).toBe("consent");
+      expect(grants.promptForAuthorize({ redirect_uri: "http://127.0.0.1:9/cb", prompt: "consent" })).toBeNull();
     });
 
     it("issues a short-lived token for the MCP endpoint alone, carrying the workspace", async () => {
@@ -634,6 +699,80 @@ describe.skipIf(!ready)("OAuth for the MCP endpoint", () => {
       expect((await swap(theirCode, sameApp)).status).toBe(200);
       expect((await rpc(again.saved!.access_token)).status).toBe(200);
     });
+
+    // A request already under way when the app is cut off writes its row once the cut has finished,
+    // so the cut can't have deleted it. These put that row back by hand, dated now, as it would be.
+    for (const how of ["disconnectApp", "revokeAgentAccess"] as const) {
+      const cutOff = async (W: Seeded, clientId: string) => {
+        if (how === "revokeAgentAccess") return void (await revokeAgentAccess(W.user.id));
+        const [listed] = (await oauth.listConnectedApps({ workspaceId: W.ws.id })).filter((a) => a.clientId === clientId);
+        expect(await oauth.disconnectApp({ workspaceId: W.ws.id }, listed.id)).toBe(true);
+      };
+      const reconnect = async (W: Seeded, info: MemoryProvider["info"]) => {
+        // A consent is dated to the second, so the new one has to be a later second than the old row.
+        await new Promise((r) => setTimeout(r, 1100));
+        const again = new MemoryProvider();
+        again.info = info;
+        return connectApp(W, ["read"], again);
+      };
+      const token = (params: Record<string, string>) =>
+        auth.handler(new Request(`${ORIGIN}/api/auth/oauth2/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ ...params, resource: MCP_URL }) }));
+
+      it(`a refresh token written as ${how} runs is refused, and stays refused after the same app connects again`, async () => {
+        const C = await seedWorkspace("oauth-late-refresh");
+        const app = await connectApp(C, ["read", "offline_access"]);
+        const clientId = app.info!.client_id;
+        const mine = eq(s.oauthRefreshTokens.clientId, clientId);
+        const [row] = await db.select().from(s.oauthRefreshTokens).where(mine);
+        const late = () => db.insert(s.oauthRefreshTokens).values({ ...row, sessionId: null, createdAt: new Date() });
+        const refresh = () => token({ grant_type: "refresh_token", refresh_token: app.saved!.refresh_token!, client_id: clientId });
+
+        await cutOff(C, clientId);
+        expect(await db.$count(s.oauthRefreshTokens, mine)).toBe(0);
+        await late();
+        const refused = await refresh();
+        expect(refused.status).toBe(400);
+        expect(await refused.json()).toMatchObject({ error: "invalid_grant" });
+        // It is gone, so it can't be kept for later.
+        expect(await db.$count(s.oauthRefreshTokens, mine)).toBe(0);
+
+        await late();
+        const again = await reconnect(C, app.info);
+        expect((await refresh()).status).toBe(400);
+        expect((await rpc(again.saved!.access_token)).status).toBe(200);
+      });
+
+      it(`a code written as ${how} runs can't be swapped, before or after the same app connects again`, async () => {
+        const C = await seedWorkspace("oauth-late-code");
+        const app = await connectApp(C, ["read", "offline_access"]);
+        const clientId = app.info!.client_id;
+        const asker = new MemoryProvider();
+        asker.info = app.info;
+        await sdkAuth(asker, { serverUrl: MCP_URL, fetchFn: appFetch });
+        const { back } = await browserConsents(asker.authorizationUrl!, C, { accept: true, scope: "read offline_access" });
+        const code = back.searchParams.get("code")!;
+        expect(code).toBeTruthy();
+        const itsCodes = and(like(s.verifications.value, '{"type":"authorization\\_code",%'), like(s.verifications.value, `%${clientId}%`));
+        const rows = await db.select().from(s.verifications).where(itsCodes);
+        expect(rows).toHaveLength(1);
+        const late = () => db.insert(s.verifications).values({ ...rows[0], createdAt: new Date(), updatedAt: new Date() });
+        const swap = () => token({ grant_type: "authorization_code", code, redirect_uri: CALLBACK, client_id: clientId, code_verifier: asker.verifier });
+
+        await cutOff(C, clientId);
+        expect(await db.$count(s.verifications, itsCodes)).toBe(0);
+        await late();
+        const refused = await swap();
+        expect(refused.status).toBe(400);
+        expect(await refused.json()).toMatchObject({ error: "invalid_grant" });
+        expect(await db.$count(s.verifications, itsCodes)).toBe(0);
+        expect(await db.$count(s.oauthRefreshTokens, eq(s.oauthRefreshTokens.clientId, clientId))).toBe(0);
+
+        await late();
+        const again = await reconnect(C, app.info);
+        expect((await swap()).status).toBe(400);
+        expect((await rpc(again.saved!.access_token)).status).toBe(200);
+      });
+    }
   });
 
   it("leaves API keys working as before", async () => {

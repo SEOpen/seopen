@@ -315,6 +315,26 @@ describe("the visitor's address for Better Auth's rate limits", () => {
     expect(res.headers.get("x-middleware-override-headers")).not.toContain("x-seopen-client-ip");
     expect(passed(res)).toBeNull();
   });
+
+  it("runs for /api/auth on a request that names the site host, which the matcher otherwise skips", () => {
+    for (const path of ["/api/auth/sign-in/email", "/api/auth/request-password-reset", "/api/auth/oauth2/token"]) {
+      expect(unstable_doesMiddlewareMatch({ config, url: `https://getseopen.com${path}` })).toBe(true);
+    }
+  });
+
+  it.each([
+    ["a copy with one host", {}],
+    ["the hosted service", { SEOPEN_SITE_HOST: "getseopen.com", SEOPEN_APP_HOST: "app.getseopen.com" }],
+  ])("drops a forged address from a request that names the site host to %s", async (_copy, env) => {
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("SEOPEN_SITE_HOST", "");
+    vi.stubEnv("SEOPEN_APP_HOST", "");
+    for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+    const request = new NextRequest("https://getseopen.com/api/auth/sign-in/email", { method: "POST", headers: { host: "getseopen.com", "x-seopen-client-ip": "192.0.2.1" } });
+    const res = await proxy(request);
+    expect(res.headers.get("x-middleware-override-headers")).not.toContain("x-seopen-client-ip");
+    expect(passed(res)).toBeNull();
+  });
 });
 
 describe("no-login mode (src/lib/auth/no-login.ts)", () => {

@@ -13,7 +13,7 @@ import { BROAD_LINK_RANK, BROAD_MIN_COMPETITORS, ELEVATED_SPAM, linkedPageRows, 
 import { competitorsSpec, historySpec, KEYWORD_LIMITS, pagesSpec, rankedKeywordsSpec, rankOverviewSpec } from "@/modules/domains/requests";
 import { competitorRows, historySeries, isHostname, kpis, pageRows, rankedRows, sectionOf, sectionRows } from "@/modules/domains/transform";
 import type { CompetitorsResult, HistoryResult, PagesResult, RankedKeywordsResult, RankOverviewResult } from "@/modules/domains/types";
-import { load, pendingCost, type DfsSpec } from "@/modules/keywords/dfs";
+import { load, pendingSpecs, type DfsSpec } from "@/modules/keywords/dfs";
 import { hasSearchOperators } from "@/modules/keywords/lookup-quote";
 import { keywordOverviewSpec, MAX_KEYWORD_LENGTH, relatedSpec, questionsSpec, serpSpec, suggestionsSpec, type Market } from "@/modules/keywords/requests";
 import { relatedRows, serpRows, toKeywordRow, volumeTrend, type SerpRow } from "@/modules/keywords/transform";
@@ -144,13 +144,21 @@ export function registerResearchTools(server: McpServer, principal: Principal, r
   /**
    * Runs specs under the cost rules. `shape` gets each spec's results, in order. Everything already
    * saved is free; the price covers only what isn't.
+   *
+   * Whether the call may spend is decided once, from the price: only the specs that price covered
+   * are loaded with `run`, and only when the key's scope and `max_credits` cleared it. A saved
+   * answer can go between the price and the load (it expires by the clock at each read); that spec
+   * comes back idle and is quoted, never bought.
    */
   async function lookup<Out extends object>(specs: DfsSpec[], args: { max_credits?: number }, projectId: number | null, shape: (results: unknown[][]) => Out, warning?: string): Promise<object> {
     return paying(async () => {
-      const usd = await pendingCost(specs, ws.workspaceId);
+      const unpaid = new Set(await pendingSpecs(specs, ws.workspaceId));
+      const usd = [...unpaid].reduce((sum, spec) => sum + spec.estUsd, 0);
       const credits = usd > 0 ? creditsFor(usd) : 0;
       if (credits > 0 && !(await mayRun(credits, args.max_credits))) return quote(credits, warning);
-      const loaded = await Promise.all(specs.map((spec) => load<unknown>(spec, { run: true, workspaceId: ws.workspaceId, projectId })));
+      const loaded = await Promise.all(specs.map((spec) => load<unknown>(spec, { run: unpaid.has(spec), workspaceId: ws.workspaceId, projectId })));
+      const goneUsd = loaded.reduce((sum, l) => sum + (l.state === "idle" ? l.estUsd : 0), 0);
+      if (goneUsd > 0) return quote(creditsFor(goneUsd), warning);
       const results = loaded.map((l) => (l.state === "ready" ? l.results : []));
       const chargedUsd = loaded.reduce((sum, l) => sum + (l.state === "ready" ? l.chargedUsd : 0), 0);
       // `credits` is the price, the most the lookup could cost; `credits_charged` what it really cost.

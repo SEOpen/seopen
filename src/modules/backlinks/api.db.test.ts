@@ -27,6 +27,8 @@ const { estimateCostUsd } = await import("./logic");
 
 const PATH = "backlinks/summary/live";
 const DAY = 86_400_000;
+// How long ago the saved summary was fetched: inside the day a summary is kept for, so it is still read.
+const EARLIER = 20 * 3_600_000;
 const SUMMARY = { target: "x", rank: 10, backlinks: 50, referring_domains: 7, referring_main_domains: 6, backlinks_spam_score: 3, broken_backlinks: 0, referring_links_attributes: { nofollow: 1 } };
 const answer = { status_code: 20000, status_message: "Ok.", cost: 0.02, tasks_count: 1, tasks_error: 0, tasks: [{ status_code: 20000, cost: 0.02, result: [SUMMARY] }] };
 const utcDay = (d: Date) => d.toISOString().slice(0, 10);
@@ -67,9 +69,9 @@ describe.skipIf(!ready)("backlink snapshots", () => {
     return spy;
   };
 
-  it("doesn't re-date a snapshot when a page reads the saved response the next day", async () => {
+  it("doesn't re-date a snapshot when a page reads the saved response hours later", async () => {
     const p = await project();
-    const fetchedAt = new Date(Date.now() - DAY);
+    const fetchedAt = new Date(Date.now() - EARLIER);
     await cached(p.workspaceId, p.domain, fetchedAt);
     const filedAt = new Date(fetchedAt.getTime() + 1000);
     await db.insert(backlinksSnapshots).values({ workspaceId: p.workspaceId, projectId: p.projectId, date: utcDay(fetchedAt), target: p.domain, backlinks: 50, referringDomains: 7, createdAt: filedAt });
@@ -85,7 +87,7 @@ describe.skipIf(!ready)("backlink snapshots", () => {
 
   it("files a saved response under the day it was fetched when it has no snapshot yet", async () => {
     const p = await project();
-    const fetchedAt = new Date(Date.now() - DAY);
+    const fetchedAt = new Date(Date.now() - EARLIER);
     await cached(p.workspaceId, p.domain, fetchedAt);
     noCalls();
     await getSummary(p.domain, { workspaceId: p.workspaceId, projectId: p.projectId, run: false });
@@ -94,7 +96,7 @@ describe.skipIf(!ready)("backlink snapshots", () => {
 
   it("gives a run's saved response its fetch date too, and doesn't pay for it", async () => {
     const p = await project();
-    const fetchedAt = new Date(Date.now() - DAY);
+    const fetchedAt = new Date(Date.now() - EARLIER);
     await cached(p.workspaceId, p.domain, fetchedAt);
     const spy = noCalls();
     const res = await getSummary(p.domain, { workspaceId: p.workspaceId, projectId: p.projectId });

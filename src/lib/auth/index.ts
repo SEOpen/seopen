@@ -29,6 +29,7 @@ import { revokeResetLinks } from "./reset-links";
 import { revokeAgentAccess } from "./revoke-agents";
 import { noLoginPlugin } from "./no-login-plugin";
 import { OAUTH_DISABLED_PATHS, oauthPlugins } from "./oauth";
+import { promptForAuthorize, requireStandingConsent } from "./oauth-grants";
 import { sendAfterResponse } from "./send-after";
 import { signOutElsewherePlugin } from "./sign-out-elsewhere-plugin";
 
@@ -164,6 +165,18 @@ export const auth = betterAuth({
       // Whatever the request asked for: a reset link lands on the reset page and nowhere else. The link
       // adds its token to the address it lands on, so no other page gets to see one.
       if (ctx.path === "/request-password-reset") return { context: { body: { ...ctx.body, redirectTo: RESET_PASSWORD_PATH } } };
+      // The provider swaps a code and refreshes a token without looking at the consent (./oauth-grants.ts).
+      if (ctx.path === "/oauth2/token") return void (await requireStandingConsent(ctx.body));
+      // An app whose callback is on the machine itself asks every time, stored consent or not. Only
+      // for a request that came to this endpoint: the consent page's answer runs authorize again
+      // from inside the provider, with the prompt it has just satisfied taken off, and comes through here too.
+      if (ctx.path === "/oauth2/authorize" && ctx.request && new URL(ctx.request.url).pathname.endsWith("/oauth2/authorize")) {
+        // The provider reads a POST's parameters from its form body and a GET's from the query.
+        const posted = ctx.request.method === "POST";
+        const prompt = promptForAuthorize(posted ? ctx.body : ctx.query);
+        if (!prompt) return;
+        return { context: posted ? { body: { ...ctx.body, prompt } } : { query: { ...ctx.query, prompt } } };
+      }
       if (ctx.path !== "/sign-up/email") return;
       const body = await signup.beforeEmailSignUp(ctx.body);
       if (body) return { context: { body } };

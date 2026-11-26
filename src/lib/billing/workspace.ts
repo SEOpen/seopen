@@ -122,11 +122,12 @@ export const auditRefusal = (ws: GateWorkspace, projectId?: number): Promise<Ref
 /**
  * The project's AI visibility runs started by hand this week, or null when another may start. The
  * Monday run is the cron's and doesn't count, nor does a run that failed. Weeks start on Monday in
- * the database's time zone, as `auditsThisWeek` does.
+ * the database's time zone, as `auditsThisWeek` does. `tx` is the transaction that starts the run
+ * (src/modules/ai/run.ts), which holds the project's lock so the count and the new run are one step.
  */
-export async function manualAiRunRefusal(ws: GateWorkspace, projectId: number): Promise<Refusal | null> {
+export async function manualAiRunRefusal(ws: GateWorkspace, projectId: number, tx: Pick<typeof db, "select"> = db): Promise<Refusal | null> {
   if (!Number.isFinite(rules.limitsFor(ws).manualAiRunsPerWeek)) return null;
-  const [row] = await db
+  const [row] = await tx
     .select({ n: count() })
     .from(aiRuns)
     .where(and(eq(aiRuns.workspaceId, ws.id), eq(aiRuns.projectId, projectId), eq(aiRuns.trigger, "manual"), gte(aiRuns.startedAt, sql`date_trunc('week', now())`), inArray(aiRuns.status, ["queued", "running", "done"])));

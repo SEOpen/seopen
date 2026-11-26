@@ -6,7 +6,9 @@ import { aiBrandAliases, aiLlmMentions, aiOverviews, aiPrompts, aiResults, aiRun
 import { competitors, projects } from "@/db/schema/core";
 import { SpendRefusedError } from "@/lib/billing/errors";
 import { ceilingExceeded, manualRunCreditsRefusal, spendState } from "@/lib/billing/spend";
+import type { Refusal } from "@/lib/billing/errors";
 import { monthUsage } from "@/lib/billing/usage";
+import { loadBillingWorkspace, manualAiRunRefusal } from "@/lib/billing/workspace";
 import { POSTING_NEVER_FINISHED } from "@/lib/check-failure";
 import { BudgetExceededError, monthToDateSpendUsd, recordLedgerAdjustment } from "@/lib/dataforseo/client";
 import { aiRunFailure } from "@/lib/dataforseo/failure-copy";
@@ -123,15 +125,37 @@ const projectRow = (s: ProjectScope) => and(eq(projects.workspaceId, s.workspace
 /** A run of the scope, so a job or form can't name another workspace's run. */
 const runIn = (s: ProjectScope, runId: number) => and(eq(aiRuns.id, runId), inScope(aiRuns, s));
 
+/** The plan's runs by hand for this week are used up: found under the project's lock, as the run was about to be made. */
+export class ManualRunLimitError extends Error {
+  constructor(readonly refusal: Refusal) {
+    super(refusal.message);
+    this.name = "ManualRunLimitError";
+  }
+}
+
 /** Create a queued run row and hand it to the worker. Returns the run id, or null when there is nothing to run. */
 export async function startRun(scope: ProjectScope, trigger: "manual" | "cron"): Promise<number | null> {
+  return (await beginRun(scope, trigger))?.id ?? null;
+}
+
+/**
+ * `startRun`, saying whether this call made the run. `created: false` is the run already in progress
+ * for the project, which this call did not start and must not report as its own.
+ *
+ * Two starts at once are one run: the insert leans on ai_runs_one_active_per_project, and it and the
+ * week's count of runs by hand happen under one lock per project, so neither a double click nor
+ * many requests at once get past the one-run rule or the plan's weekly limit.
+ */
+export async function beginRun(scope: ProjectScope, trigger: "manual" | "cron"): Promise<{ id: number; created: boolean } | null> {
   const [project] = await db.select().from(projects).where(projectRow(scope));
   if (!project) return null;
-  const busy = await db
-    .select({ id: aiRuns.id })
-    .from(aiRuns)
-    .where(and(inScope(aiRuns, scope), inArray(aiRuns.status, ["queued", "running"])));
-  if (busy.length) return busy[0].id;
+  const inProgress = () =>
+    db
+      .select({ id: aiRuns.id })
+      .from(aiRuns)
+      .where(and(inScope(aiRuns, scope), inArray(aiRuns.status, ["queued", "running"])));
+  const busy = await inProgress();
+  if (busy.length) return { id: busy[0].id, created: false };
   const est = await estimateRun(project);
   if (!est.answers) return null;
   // Refuse a run that would cross the workspace's monthly cap before creating it.
@@ -147,9 +171,23 @@ export async function startRun(scope: ProjectScope, trigger: "manual" | "cron"):
     const leftUsd = state.creditsUsd - usage.researchUsd - usage.researchReservedUsd;
     if (est.usd > leftUsd) throw new SpendRefusedError(scope.workspaceId, manualRunCreditsRefusal(state.workspace, est.usd, leftUsd), { estimateUsd: est.usd });
   }
-  const [run] = await db.insert(aiRuns).values({ ...scope, trigger, estimatedCostUsd: est.usd }).returning({ id: aiRuns.id });
+  const ws = trigger === "manual" ? await loadBillingWorkspace(scope.workspaceId) : null;
+  const run = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`seopen-ai-run:${scope.projectId}`}, 0))`);
+    if (ws) {
+      const weekly = await manualAiRunRefusal(ws, scope.projectId, tx);
+      if (weekly) throw new ManualRunLimitError(weekly);
+    }
+    const [row] = await tx.insert(aiRuns).values({ ...scope, trigger, estimatedCostUsd: est.usd }).onConflictDoNothing().returning({ id: aiRuns.id });
+    return row ?? null;
+  });
+  if (!run) {
+    // Another start made the project's run between the check above and the insert.
+    const [other] = await inProgress();
+    return other ? { id: other.id, created: false } : null;
+  }
   if (trigger === "manual") await enqueue("ai.run", { ...scope, runId: run.id }, { singletonKey: `run-${run.id}` });
-  return run.id;
+  return { id: run.id, created: true };
 }
 
 /**

@@ -1,5 +1,3 @@
-import { cimd } from "@better-auth/cimd";
-import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { mcp } from "@better-auth/mcp";
 import { asc, eq } from "drizzle-orm";
 import { APIError } from "better-auth/api";
@@ -7,6 +5,7 @@ import { jwt } from "better-auth/plugins";
 import { db } from "@/db";
 import { workspaceMembers } from "@/db/schema";
 import { HOSTED_DOCS_ORIGIN } from "@/lib/docs-redirects";
+import { clientMetadata } from "./client-metadata";
 
 /**
  * OAuth 2.1 for the MCP server. The app is the authorization
@@ -145,10 +144,7 @@ export function oauthPlugins(baseUrl: string) {
       customAccessTokenClaims: ({ referenceId }) => (referenceId ? { [WORKSPACE_CLAIM]: Number(referenceId) } : {}),
       advertisedMetadata: { scopes_supported: [...OAUTH_SCOPES] },
     }),
-    cimd({
-      // Resolves the host once, refuses private addresses, pins the connection and never follows a redirect.
-      fetchClientMetadataResource,
-      metadataProfile: "mcp-2026-07-28",
-    }),
+    // Client ID metadata documents, with this app's own limits in front (./client-metadata.ts).
+    clientMetadata(),
   ];
 }
