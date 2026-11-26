@@ -45,10 +45,12 @@ services:
     restart: unless-stopped
 
   # Applies new migrations, then exits. It runs again on every `docker compose up`, and does nothing
-  # when the database is current.
+  # when the database is current. It and the worker run under Node itself, not `pnpm db:migrate:start`
+  # and `pnpm worker:start`: settings come from compose, not .env.local, and the stop signal from
+  # `docker compose stop` reaches the worker, so it finishes its jobs and exits cleanly.
   migrate:
     <<: *app
-    command: ["pnpm", "db:migrate:start"]
+    command: ["node", "--import", "tsx", "scripts/migrate.ts"]
     restart: "no"
     environment:
       DATABASE_URL: postgres://seopen:${POSTGRES_PASSWORD}@postgres:5432/seopen
@@ -56,7 +58,7 @@ services:
 
   worker:
     <<: *app
-    command: ["pnpm", "worker:start"]
+    command: ["node", "--import", "tsx", "src/worker.ts"]
     depends_on:
       postgres:
         condition: service_healthy
