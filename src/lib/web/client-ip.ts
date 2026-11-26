@@ -52,8 +52,12 @@ export function clientAddress(headers: Headers, trusted = trustsProxyHeaders()):
  * no new quota; a /48 can hold hundreds of homes.
  */
 export function clientIp(headers: Headers, trusted = trustsProxyHeaders()): string {
-  const ip = clientAddress(headers, trusted);
-  if (!ip) return "local";
+  return addressKey(clientAddress(headers, trusted));
+}
+
+/** The counting key for one address, as clientIp gives it: "local" for none, an IPv6 address by its /56. */
+export function addressKey(ip: string | null | undefined): string {
+  if (!ip || !(net.isIPv4(ip) || net.isIPv6(ip))) return "local";
   if (net.isIPv6(ip)) {
     const full = (ip.includes("::") ? expandV6(ip) : ip.split(":")).map((g) => parseInt(g || "0", 16));
     const hex = (n: number) => n.toString(16);
