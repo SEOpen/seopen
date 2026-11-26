@@ -10,7 +10,7 @@ import { withClientIpHeader } from "@/lib/web/client-ip";
 
 /**
  * The sign-in gate, plus the app host's half of the host split (src/lib/hosts.ts). The site host
- * never reaches here: the matcher skips it, and next.config.ts redirects its app paths. Every
+ * reaches here only for the analytics relay: the matcher skips the rest, and next.config.ts redirects its app paths. Every
  * app page, API route and Server Action needs a Better Auth session. The proxy runs on Node, so
  * it checks the session for real, against its row, so a session ended anywhere is refused at once.
  * Better Auth is imported only when a session cookie needs checking.
@@ -23,6 +23,9 @@ export async function proxy(request: NextRequest) {
   // The Host header, not nextUrl: Next rewrites 127.0.0.1 and [::1] in nextUrl to "localhost".
   const loopback = hosts ? null : loopbackRedirect(new URL(`${request.nextUrl.protocol}//${request.headers.get("host") ?? "invalid"}${pathname}${search}`));
   if (loopback) return NextResponse.redirect(loopback, 307);
+
+  // /ingest only relays analytics to PostHog, on either host; the last events of a session can land after sign-out.
+  if (pathname.startsWith("/ingest/")) return relay(request);
 
   // Only if the matcher's host check is skipped: next.config.ts has already routed this request.
   if (hosts && hostname === hosts.site) return NextResponse.next();
@@ -48,13 +51,11 @@ export async function proxy(request: NextRequest) {
   // Stripe's webhook signs its own requests; checkout sends a signed-out visitor to sign-in itself.
   // The MCP endpoint takes a bearer API key or OAuth token instead of a session and checks it in the
   // route; its OAuth discovery documents are public.
-  // /ingest only relays analytics to PostHog; the last events of a session can land after sign-out.
   // PostHog's servers fetch the OAuth client metadata document, with no session.
   // The recap's unsubscribe link checks its own signed token, and mail apps post to it with no session.
   // Vercel's cron calls the worker watch with CRON_SECRET as a bearer token, which the route checks.
   if (pathname === "/api/webhooks/stripe" || pathname === "/api/billing/checkout" || pathname === "/api/mcp" || pathname === "/api/posthog/client-metadata" || pathname === "/api/email/unsubscribe" || pathname === "/api/cron/worker-watch") return NextResponse.next();
   if (pathname.startsWith("/.well-known/")) return NextResponse.next();
-  if (pathname.startsWith("/ingest/")) return withoutCookies(request);
 
   if (getSessionCookie(request)) {
     const { auth } = await import("@/lib/auth");
@@ -85,14 +86,38 @@ function localSignIn(request: NextRequest, next: string | null): NextResponse {
 }
 
 /**
- * The /ingest rewrite (next.config.ts) forwards the browser's request to PostHog, and the browser
- * sends our cookies with it, the HttpOnly session among them, since /ingest is on our own host.
- * PostHog needs none of them, so they're dropped. The x-forwarded-* headers stay: PostHog reads the
- * visitor's IP from them for its location lookup.
+ * What the /ingest relay passes on to PostHog: how to read the body, who the visitor is and where they
+ * are (PostHog looks up the location from x-forwarded-for), and the page that sent the event.
  */
-function withoutCookies(request: NextRequest): NextResponse {
-  const headers = new Headers(request.headers);
-  headers.delete("cookie");
+const RELAY_HEADERS = new Set([
+  "host",
+  "content-type",
+  "content-encoding",
+  "content-length",
+  "transfer-encoding",
+  "accept",
+  "accept-encoding",
+  "accept-language",
+  "user-agent",
+  "origin",
+  "referer",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-port",
+  "x-forwarded-proto",
+  "x-real-ip",
+]);
+
+/**
+ * The /ingest rewrite (next.config.ts) forwards the browser's request to PostHog, a service outside
+ * this one, and would send every header along. The browser adds our cookies, the HttpOnly session
+ * among them, since /ingest is on our own host, and a load balancer or CDN in front of the app may
+ * add headers meant for the app alone, such as the one it proves itself with. So only the headers
+ * PostHog needs go on; a header nobody listed stays here.
+ */
+function relay(request: NextRequest): NextResponse {
+  const headers = new Headers();
+  for (const [name, value] of request.headers) if (RELAY_HEADERS.has(name)) headers.set(name, value);
   return NextResponse.next({ request: { headers } });
 }
 
@@ -130,5 +155,7 @@ export const config = {
       // The marketing host is served straight from the CDN. Matcher values must be literals.
       missing: [{ type: "host", value: "getseopen\\.com" }],
     },
+    // The analytics relay runs here on every host, so its headers are trimmed there too.
+    "/ingest/:path*",
   ],
 };

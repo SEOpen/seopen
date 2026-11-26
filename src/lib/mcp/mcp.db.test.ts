@@ -26,6 +26,7 @@ const { db } = await import("@/db");
 const s = await import("@/db/schema");
 const keys = await import("./keys");
 const { NO_RESEARCH } = await import("./write-tools");
+const { SEARCH_NOT_SAVED } = await import("@/modules/local/ops");
 const { POST, GET } = await import("@/app/api/mcp/route");
 const { getOverview: aiOverview } = await import("@/modules/ai/data");
 const { THREAD_RULE } = await import("@/modules/ai/action-list");
@@ -1488,6 +1489,13 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       // weekly: false gets past the scope check to the listing's own checks (this one was never found).
       const without = await call(client, "add_local_business", { ...listing, weekly: false });
       expect(without.content[0].text).not.toMatch(/^Weekly checks/);
+      // The tool takes no max_credits, so confirming never buys the search, for either key: the listing comes from find_local_listing's saved search or not at all.
+      for (const [who, c] of [["writer", client], ["spender", spender]] as const) {
+        const confirmed = await call(c, "add_local_business", { ...listing, weekly: false, confirm: true });
+        expect(confirmed.isError, who).toBe(true);
+        expect(confirmed.content[0].text, who).toBe(SEARCH_NOT_SAVED);
+      }
+      expect(await db.$count(s.localBusinesses, eq(s.localBusinesses.workspaceId, W.ws.id))).toBe(0);
       // Keywords on a listing with weekly checks raise that weekly spend, so they need the scope too; a listing without them takes keywords.
       const business = (scheduled: boolean) =>
         db

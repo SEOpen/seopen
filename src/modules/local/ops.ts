@@ -62,6 +62,9 @@ async function priceOf(scope: ProjectScope, usd: number): Promise<LocalPrice> {
 /** A business id that isn't one of this project's: deleted, another project's, or mistyped. */
 const NO_BUSINESS = "No listing with that id in this project.";
 
+/** Step 2 without step 1's search to read from: never run, or more than a day old. */
+export const SEARCH_NOT_SAVED = "That search isn't saved: it was never run, or it ran more than a day ago. Search for the business again with the same name and city, then add the listing.";
+
 function spendMessage(e: unknown): never {
   if (e instanceof SpendRefusedError) throw new OpError(e.message, e.refusal);
   throw e;
@@ -113,11 +116,15 @@ export interface AddedBusiness {
  * Step 2: track the listing picked from step 1's results. The search is repeated (a free cache hit
  * within a day) and the listing is taken from DataForSEO's answer, so the caller can't supply its
  * own coordinates or ids.
+ *
+ * `savedSearchOnly` is for a caller that takes no price for this step (the MCP tool): the listing
+ * comes from step 1's saved search or not at all, so adding never buys a search. Without it a search
+ * older than a day is bought again, which the app's own form allows.
  */
 export async function addBusinessOp(
   scope: ProjectScope,
   input: { name: string; city: string; listing: string; scheduled?: boolean; gridSize?: number; radiusMiles?: number },
-  opts: OpOptions = {},
+  opts: OpOptions & { savedSearchOnly?: boolean } = {},
 ): Promise<AddedBusiness> {
   const name = clean(input.name);
   const city = clean(input.city);
@@ -129,9 +136,10 @@ export async function addBusinessOp(
   if (!isGridSize(gridSize) || !isRadius(radiusMiles)) throw new OpError("The grid is 3, 5 or 7 points across, and the radius 1, 3, 5 or 10 miles.");
   const tasks = await searchTasks(scope, name, city);
   // A dry run only looks in the cache, so it never spends; step 1 put the search there.
-  const candidates = opts.dryRun
-    ? parseCandidates((await peekCache<MapsResult>(scope.workspaceId, "POST", MAPS_SEARCH, tasks))?.response.tasks?.[0]?.result?.[0])
-    : await searchMaps(scope, name, city).catch(spendMessage);
+  const saved = opts.dryRun || opts.savedSearchOnly ? await peekCache<MapsResult>(scope.workspaceId, "POST", MAPS_SEARCH, tasks) : null;
+  // The one read decides: a search that expires right after it is still used, never bought again.
+  if (opts.savedSearchOnly && !opts.dryRun && !saved) throw new OpError(SEARCH_NOT_SAVED);
+  const candidates = opts.dryRun || opts.savedSearchOnly ? parseCandidates(saved?.response.tasks?.[0]?.result?.[0]) : await searchMaps(scope, name, city).catch(spendMessage);
   const picked = candidates.find((c) => candidateKey(c) === input.listing);
   if (!picked) throw new OpError("Pick one of the listings the search found (its `listing` key), searching again with the same name and city first if needed.");
   const [existing] = await db

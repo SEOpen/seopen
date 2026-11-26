@@ -335,7 +335,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
     "add_local_business",
     {
       title: "Track a Google Maps listing",
-      description: `Step 2 of Local SEO: tracks a listing from find_local_listing (same name and city, plus its \`listing\` key) on a grid of points around it. Grid ${GRID_SIZES.join(", ")} points across (default 5), radius ${RADII_MILES.join(", ")} miles (default 5). Weekly checks are on by default and ${SPEND} each week. It checks nothing until it has keywords.`,
+      description: `Step 2 of Local SEO: tracks a listing from find_local_listing (same name and city, plus its \`listing\` key, within a day of that search) on a grid of points around it. Grid ${GRID_SIZES.join(", ")} points across (default 5), radius ${RADII_MILES.join(", ")} miles (default 5). Weekly checks are on by default and ${SPEND} each week. It checks nothing until it has keywords.`,
       inputSchema: z.object({
         project,
         name: z.string().min(1).max(120),
@@ -357,7 +357,8 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
         const res = await addBusinessOp(
           await scopeOf(args.project),
           { name: args.name, city: args.city, listing: args.listing, scheduled: args.weekly, gridSize: args.grid_size, radiusMiles: args.radius_miles },
-          { dryRun: !args.confirm },
+          // This tool takes no max_credits, so it never buys the search: it reads the one find_local_listing saved.
+          { dryRun: !args.confirm, savedSearchOnly: true },
         );
         const out = { business_id: res.businessId, title: res.title, already_tracked: res.existing, message: res.message };
         return res.dryRun && !res.existing ? preview(out) : out;

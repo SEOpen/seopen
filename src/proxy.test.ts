@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { getRedirectUrl, isRewrite } from "next/experimental/testing/server";
+import { getRedirectUrl, isRewrite, unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appHref, siteHref } from "@/lib/hosts";
-import { proxy } from "./proxy";
+import { config, proxy } from "./proxy";
 
 // Better Auth needs the database; the proxy only cares whether getSession finds a session.
 const getSession = vi.hoisted(() => vi.fn());
@@ -158,16 +158,30 @@ describe("accounts", () => {
     expect(getSession).not.toHaveBeenCalled();
   });
 
-  it("relays analytics without our cookies but with the forwarding headers", async () => {
-    const request = new NextRequest("https://getseopen.com/ingest/e/", { headers: { "x-forwarded-for": "203.0.113.7", "user-agent": "test" } });
+  it("relays analytics with only the headers PostHog needs", async () => {
+    const request = new NextRequest("https://getseopen.com/ingest/e/", {
+      method: "POST",
+      headers: {
+        "x-forwarded-for": "203.0.113.7",
+        "user-agent": "test",
+        "content-type": "text/plain",
+        "content-encoding": "gzip",
+        authorization: "Bearer app-token",
+        // A header a load balancer or CDN in front of the app added for the app alone.
+        "x-edge-to-app-proof": "shared-secret",
+      },
+      body: "{}",
+    });
     request.cookies.set(BETTER_AUTH_COOKIE, "token.signature");
     request.cookies.set("seopen_project", "3");
     const res = await proxy(request);
     // Next replaces the request's headers with the override list; anything left off it is removed.
     const forwarded = res.headers.get("x-middleware-override-headers")?.split(",") ?? [];
-    expect(forwarded).toEqual(expect.arrayContaining(["x-forwarded-for", "user-agent"]));
-    expect(forwarded).not.toContain("cookie");
-    expect(res.headers.get("x-middleware-request-cookie")).toBeNull();
+    expect(forwarded).toEqual(expect.arrayContaining(["x-forwarded-for", "user-agent", "content-type", "content-encoding"]));
+    for (const dropped of ["cookie", "authorization", "x-edge-to-app-proof"]) {
+      expect(forwarded, dropped).not.toContain(dropped);
+      expect(res.headers.get(`x-middleware-request-${dropped}`), dropped).toBeNull();
+    }
     expect(res.headers.get("x-middleware-request-x-forwarded-for")).toBe("203.0.113.7");
   });
 });
@@ -211,6 +225,15 @@ describe("split hosts (the app host; next.config.ts handles the site host)", () 
     const res = await get("https://app.getseopen.com/ingest/flags/?v=2");
     expect(getRedirectUrl(res)).toBeNull();
     expect(res.status).toBe(200);
+  });
+
+  it("trims the relay's headers on the site host too, the one path of it that runs here", async () => {
+    const request = new NextRequest("https://getseopen.com/ingest/e/", { headers: { "user-agent": "test", "x-edge-to-app-proof": "shared-secret" } });
+    const forwarded = (await proxy(request)).headers.get("x-middleware-override-headers")?.split(",") ?? [];
+    expect(forwarded).toContain("user-agent");
+    expect(forwarded).not.toContain("x-edge-to-app-proof");
+    expect(unstable_doesMiddlewareMatch({ config, url: "https://getseopen.com/ingest/e/" })).toBe(true);
+    expect(unstable_doesMiddlewareMatch({ config, url: "https://getseopen.com/pricing" })).toBe(false);
   });
 
   it("treats other hosts (previews) as one host", async () => {
