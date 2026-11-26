@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * is wrapped, to swap the connection for the pair, so nothing leaves the process.
  */
 
-const server = vi.hoisted(() => ({ respond: (_res: import("node:http").ServerResponse) => {} }));
+const server = vi.hoisted(() => ({ respond: (() => {}) as (res: import("node:http").ServerResponse) => void }));
 
 vi.mock("node:http", async (original) => {
   type Http = typeof import("node:http");
