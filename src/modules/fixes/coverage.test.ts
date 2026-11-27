@@ -136,6 +136,19 @@ describe("titleIntents", () => {
     expect(titleIntents("Salem Plumber | Fernhill", rows, brand)).toBeNull();
     expect(titleIntents(null, rows, brand)).toBeNull();
   });
+
+  it("reads a search and its run-together spelling, or its initials, as one", () => {
+    const glued = [
+      { query: "check backlinks", impressions: 900, clicks: 0, position: 5 },
+      { query: "checkbacklinks", impressions: 600, clicks: 0, position: 9 },
+    ];
+    expect(titleIntents("Check Backlinks Free | Fernhill", glued, brand)).toBeNull();
+    const initials = [
+      { query: "seo audit", impressions: 900, clicks: 0, position: 5 },
+      { query: "search engine optimization", impressions: 600, clicks: 0, position: 9 },
+    ];
+    expect(titleIntents("SEO Audit and Search Engine Optimization | Fernhill", initials, brand)).toBeNull();
+  });
 });
 
 describe("fewLinksIn", () => {

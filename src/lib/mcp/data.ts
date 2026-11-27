@@ -938,6 +938,9 @@ export async function aiVisibilityData(ws: WorkspaceScope, args: { project?: str
 /** Actions listed per prompt unless the call asks for more: one prompt can have dozens. */
 export const DEFAULT_ACTIONS_PER_PROMPT = 5;
 
+/** Prompts listed unless the call asks for more: 25 with their actions ran to about 38,000 characters. */
+export const DEFAULT_ACTION_PROMPTS = 10;
+
 /** AI visibility → Actions: what to do about each prompt whose latest answers don't name the site. */
 export async function aiActionsData(ws: WorkspaceScope, args: { project?: string | number; status?: ActionStatus | "all"; limit?: number; actions_per_prompt?: number }) {
   const project = await resolveProject(ws, args.project);
@@ -954,7 +957,7 @@ export async function aiActionsData(ws: WorkspaceScope, args: { project?: string
   const listed = notNamed
     .map((p) => ({ ...p, actions: p.actions.filter((a) => keep(a.status)) }))
     .filter((p) => p.actions.length || (p.noneBecause && (status === "open" || status === "all")));
-  const { rows, total, truncated } = capped(listed, args.limit);
+  const { rows, total, truncated } = capped(listed, args.limit ?? DEFAULT_ACTION_PROMPTS);
   const latest = view.prompts.map((p) => p.runAt).sort().at(-1)!;
   return {
     project: projectInfo(project),

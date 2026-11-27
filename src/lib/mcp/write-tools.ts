@@ -99,9 +99,14 @@ const CREDIT_UNIT = rules.creditUnit.charAt(0).toUpperCase() + rules.creditUnit.
  * A dry run's answer: what would happen, and how to go ahead. `dry_run` leads, so counts named in
  * the past tense (added, changed) read as what would happen.
  */
-function preview(result: { message: string }, how = "Call again with confirm: true to make this change.") {
+function preview(result: { message: string }, how = "Call again with confirm: true to make this change.", changes = true) {
+  // A dry run that would change nothing has nothing to confirm: its message and skipped say why.
+  if (!changes) return { dry_run: true, ...result, needs_confirmation: false };
   return { dry_run: true, ...result, needs_confirmation: true, next: how };
 }
+
+/** How many things a dry run would change, from a count or a list of them. */
+const howMany = (x: number | unknown[]) => (Array.isArray(x) ? x.length : x);
 
 /** Dollars rounded up to the cent, so a float like 0.5147999999999999 reads 0.52. */
 function cents(usd: number) {
@@ -134,8 +139,8 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
   const scopeOf = async (ref?: string | number) => projectScope(await resolveLiveProject(ws, ref));
   /** Research credits are the `research` scope's, whatever `write` allows. */
   const spends = canResearch(principal);
-  /** Whether a paid step may run now: the key may spend, and `max_credits` covers the price. */
-  const covered = (max: number | undefined, credits: number) => spends && (max ?? 0) >= credits;
+  /** Whether a paid step may run now: the key may spend, and `max_credits` is given and covers the price, even a price of 0. */
+  const covered = (max: number | undefined, credits: number) => spends && max != null && max >= credits;
   const refuseSpend = () => {
     throw new ToolError(NO_RESEARCH);
   };
@@ -198,7 +203,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
           ...(notDomains.length ? { not_domains: notDomains } : {}),
           message: notDomains.length ? `${res.message} Left out ${notDomains.length} that ${notDomains.length === 1 ? "isn't a domain" : "aren't domains"}: ${notDomains.join(", ")}.` : res.message,
         };
-        return res.dryRun ? preview(out) : out;
+        return res.dryRun ? preview(out, undefined, howMany(res.added) > 0) : out;
       }),
   );
 
@@ -232,7 +237,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
           ...(res.unitsLeft != null ? { keyword_units_left: res.unitsLeft } : {}),
           message: res.message,
         };
-        return res.dryRun ? preview(out) : out;
+        return res.dryRun ? preview(out, undefined, howMany(res.added) > 0) : out;
       }),
   );
 
@@ -273,7 +278,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
             ? `${res.message} ${res.branded.length === 1 ? "1 prompt names" : `${res.branded.length} prompts name`} the brand. ${res.includesBranded ? "This project counts branded prompts in visibility." : "Visibility leaves branded prompts out unless the project counts them."} Leave the brand out to see whether AI names the site unprompted.`
             : res.message,
         };
-        return res.dryRun ? preview(out) : out;
+        return res.dryRun ? preview(out, undefined, howMany(res.added) > 0) : out;
       }),
   );
 
@@ -388,7 +393,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
         if (args.confirm) await counted();
         const res = await addLocalKeywordsOp(scope, args.business, args.keywords, { dryRun: !args.confirm });
         const out = { added: res.added, already_tracked: res.already, over_limit: res.overLimit, message: res.message };
-        return res.dryRun ? preview(out) : out;
+        return res.dryRun ? preview(out, undefined, howMany(res.added) > 0) : out;
       }),
   );
 
@@ -541,7 +546,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
           ...(res.repeated.length ? { duplicates: res.repeated } : {}),
           message: res.message,
         };
-        return res.dryRun ? preview(out) : out;
+        return res.dryRun ? preview(out, undefined, res.added > 0 || res.newList) : out;
       }),
   );
 
@@ -680,7 +685,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
         const res = await setActionStatusOp(await scopeOf(args.project), refs, args.status, { dryRun: !args.confirm });
         const ref = (r: { promptId: number; kind: string; url?: string | null }) => ({ prompt_id: r.promptId, kind: r.kind, ...(r.url ? { url: r.url } : {}) });
         const out = { status: res.status, changed: res.changed.map(ref), skipped: res.skipped.map((r) => ({ ...ref(r), why: r.why })), message: res.message };
-        return res.dryRun ? preview(out) : out;
+        return res.dryRun ? preview(out, undefined, res.changed.length > 0) : out;
       }),
   );
 
@@ -698,7 +703,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
         if (args.confirm) await counted();
         const res = await setAlertRuleOp(await scopeOf(args.project), actor, { rule: args.rule, enabled: args.enabled }, { dryRun: !args.confirm });
         const out = { rule: res.rule, label: res.label, enabled: res.enabled, changed: res.changed, message: res.message };
-        return args.confirm ? out : preview(out);
+        return args.confirm ? out : preview(out, undefined, res.changed);
       }),
   );
 
@@ -721,7 +726,7 @@ export function registerWriteTools(server: McpServer, principal: Principal, run:
         if (args.confirm) return res;
         const { wouldSend, ...rest } = "wouldSend" in res ? res : { ...res, wouldSend: 0 };
         const out = { ...rest, would_send: wouldSend };
-        return preview(out);
+        return preview(out, undefined, wouldSend > 0);
       }),
   );
 }

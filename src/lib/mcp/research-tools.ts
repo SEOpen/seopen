@@ -324,7 +324,7 @@ export function registerResearchTools(server: McpServer, principal: Principal, r
     {
       title: "Domain's keywords",
       description: `Keywords any domain ranks for in a market, by estimated traffic: position, change, URL, volume, difficulty and intent. \`position\` is the organic position. \`position_absolute\`, \`previous_absolute\` and \`change\` count every element on the results page (ads, snippets, map packs), because the provider gives only an absolute previous rank: change is previous_absolute minus position_absolute, and positive means it moved up. Recently lost keywords (status lost, no position, traffic 0) come after the rest. \`total\` counts keywords ranking now and recently lost ones, so it's more than domain_overview's \`keywords\`, which counts only those ranking now. \`depth\` is how many rows to buy (${KEYWORD_LIMITS.join(", ")}; default 100) and sets the price. Saved results are free; otherwise it ${QUOTES} and runs only with max_credits at or above the price. ${KEYWORD_FIGURES}`,
-      inputSchema: z.object({ domain, depth: z.union([z.literal(100), z.literal(500), z.literal(1000)]).optional(), project, market, language, rows, max_credits: maxCredits }),
+      inputSchema: z.object({ domain, depth: z.union([z.literal(100), z.literal(500), z.literal(1000)], { error: "Must be 100, 500 or 1000." }).optional(), project, market, language, rows, max_credits: maxCredits }),
       annotations: LOOKS_UP,
     },
     (args) =>

@@ -60,7 +60,7 @@ async function priceOf(scope: ProjectScope, usd: number): Promise<LocalPrice> {
 }
 
 /** A business id that isn't one of this project's: deleted, another project's, or mistyped. */
-const NO_BUSINESS = "No listing with that id in this project.";
+const NO_BUSINESS = "No listing with that id in this project. get_local_seo lists its listings and their ids.";
 
 /** Step 2 without step 1's search to read from: never run, or more than a day old. */
 export const SEARCH_NOT_SAVED = "That search isn't saved: it was never run, or it ran more than a day ago. Search for the business again with the same name and city, then add the listing.";
