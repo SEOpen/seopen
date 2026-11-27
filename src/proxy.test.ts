@@ -408,3 +408,41 @@ describe("no-login mode (src/lib/auth/no-login.ts)", () => {
     expect(getRedirectUrl(await fromHere("http://127.0.0.1:4100/rank"))).toBe("http://localhost:4100/sign-in?next=%2Frank");
   });
 });
+
+describe("the other loopback name (src/lib/auth/base-url.ts, loopbackRedirect)", () => {
+  /** A request as a browser sends it: Next builds the URL from the address it listens on, the Host header is what was typed. */
+  function opened(host: string, path: string) {
+    return proxy(new NextRequest(`http://127.0.0.1:4100${path}`, { headers: { host } }));
+  }
+
+  beforeEach(() => vi.stubEnv("VERCEL", ""));
+
+  it("moves localhost to 127.0.0.1 with an absolute URL, path and query kept", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "");
+    const res = await opened("localhost:4100", "/landing?a=1");
+    expect(res.headers.get("refresh")).toBe("0;url=http://127.0.0.1:4100/landing?a=1");
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.text()).toContain('<meta http-equiv="refresh" content="0;url=http://127.0.0.1:4100/landing?a=1">');
+    expect((await opened("localhost:4100", "/landing")).headers.get("refresh")).toBe("0;url=http://127.0.0.1:4100/landing");
+  });
+
+  it("moves 127.0.0.1 to localhost when that is the base URL", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:4100");
+    expect((await opened("127.0.0.1:4100", "/landing")).headers.get("refresh")).toBe("0;url=http://localhost:4100/landing");
+  });
+
+  it("escapes the URL in the page", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "");
+    const body = await (await opened("localhost:4100", "/x?q='><script>")).text();
+    expect(body).not.toContain("<script>");
+    expect(body).not.toContain("'>");
+  });
+
+  it("leaves the base URL's own host to the rest of the proxy", async () => {
+    vi.stubEnv("BETTER_AUTH_URL", "");
+    const res = await opened("127.0.0.1:4100", "/landing");
+    expect(res.headers.get("refresh")).toBeNull();
+    expect(res.status).toBe(200);
+  });
+});
