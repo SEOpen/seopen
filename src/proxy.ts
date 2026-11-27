@@ -27,7 +27,7 @@ export async function proxy(request: NextRequest) {
   // A self-hosted copy opened at localhost when it lives at 127.0.0.1 (or the reverse): sign-in trusts one origin.
   // The Host header, not nextUrl: Next rewrites 127.0.0.1 and [::1] in nextUrl to "localhost".
   const loopback = hosts ? null : loopbackRedirect(new URL(`${request.nextUrl.protocol}//${request.headers.get("host") ?? "invalid"}${pathname}${search}`));
-  if (loopback) return NextResponse.redirect(loopback, 307);
+  if (loopback) return loopbackMove(loopback);
 
   // /ingest only relays analytics to PostHog, on either host; the last events of a session can land after sign-out.
   if (pathname === INGEST_PATH || pathname.startsWith(`${INGEST_PATH}/`)) return relay(request);
@@ -83,6 +83,20 @@ export async function proxy(request: NextRequest) {
   if (pathname === "/connect") return NextResponse.redirect(new URL(`/sign-in${search}`, request.url));
   if (pathname !== "/") signIn.searchParams.set("next", pathname + search);
   return NextResponse.redirect(signIn);
+}
+
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/**
+ * Moves the browser to the other loopback name. Not a 307: Next treats 127.0.0.1, [::1] and localhost
+ * as one origin and turns any proxy response's Location into a relative path, so the redirect would
+ * point back where it came from, forever. A Refresh header and the same refresh in the page itself
+ * carry the absolute URL past it.
+ */
+function loopbackMove(target: string): NextResponse {
+  const href = escapeHtml(target);
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="0;url=${href}"><title>Moving to ${href}</title></head><body><p>This copy of SEOpen signs in at <a href="${href}">${href}</a>.</p></body></html>`;
+  return new NextResponse(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", refresh: `0;url=${target}` } });
 }
 
 /** No-login mode's way in: the endpoint checks the request again, makes the owner's session and goes on to `next`. */
