@@ -35,7 +35,7 @@ export function googleStaticMapConfigured(): boolean {
 
 /**
  * Whether this workspace's maps use the Google base map. Each image Google draws is paid, and a
- * suspended workspace's paid calls stop, so its maps fall back to OpenStreetMap (CHR-320). The page
+ * suspended workspace's paid calls stop, so its maps fall back to OpenStreetMap. The page
  * and the image route both ask here.
  */
 export function googleStaticMapFor(workspace: { status: string }): boolean {
