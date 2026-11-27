@@ -171,6 +171,19 @@ describe.skipIf(!ready)("the Local SEO map image", () => {
     expect((await mapRequest(B)).status).toBe(200);
   });
 
+  it("draws OpenStreetMap for a suspended workspace and never calls Google (CHR-320)", async () => {
+    withGoogle();
+    const { eq } = await import("drizzle-orm");
+    const suspended = await seed("suspended");
+    await db.update(s.workspaces).set({ status: "suspended" }).where(eq(s.workspaces.id, suspended.ws.id));
+    as(suspended);
+    const html = renderToStaticMarkup(await LocalBusinessPage({ params: Promise.resolve({ businessId: String(suspended.business.id) }), searchParams: Promise.resolve({}) } as never));
+    expect(html).toContain("tile.openstreetmap.org");
+    expect(html).not.toContain(`/local/${suspended.business.id}/map`);
+    expect((await mapRequest(suspended)).status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("answers 502 when Google fails, so the page falls back to OpenStreetMap", async () => {
     withGoogle();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("The provided API key is invalid.", { status: 403, headers: { "Content-Type": "text/plain" } })));
