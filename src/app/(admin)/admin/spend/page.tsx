@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { SpendExtra } from "@/admin-spend-extra";
 import { setOwnerCap, setPlatformCap } from "@/app/actions/billing";
 import { ActionForm } from "@/components/ui/action-form";
 import { OWNER_CAP_MAX, PLATFORM_CAP_MAX } from "@/lib/billing/caps";
@@ -44,7 +45,8 @@ async function jobStats(workspaceId: number) {
 
 /**
  * The owner's DataForSEO spend: this month's spend by module, the ledger and the background jobs, then
- * the platform cap over every workspace and the owner workspace's own cap. Customers never see dollars;
+ * the platform cap over every workspace and the owner workspace's own cap. A hosted copy can add
+ * sections after the module table (`@/admin-spend-extra`). Customers never see dollars;
  * their usage is in credits and plan limits on Billing.
  */
 export default async function AdminSpendPage() {
@@ -97,6 +99,8 @@ export default async function AdminSpendPage() {
           initialSort={{ key: "cost", desc: true }}
         />
       </Section>
+
+      <SpendExtra />
 
       <Section title="Recent API calls" description="Owner workspace, the newest 200">
         <DataTable

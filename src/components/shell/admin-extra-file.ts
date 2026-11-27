@@ -11,3 +11,12 @@ export function adminExtraFile(root: string): string {
   const extra = "./src/components/shell/admin-extra.ts";
   return existsSync(path.join(root, extra)) ? extra : "./src/components/shell/no-admin-extra.ts";
 }
+
+/**
+ * The file `@/admin-spend-extra` resolves to: the hosted service's extra sections for Admin → Spend
+ * where that file exists, nothing otherwise. Wired like `@/admin-extra` above.
+ */
+export function adminSpendExtraFile(root: string): string {
+  const extra = "./src/components/shell/admin-spend-extra.tsx";
+  return existsSync(path.join(root, extra)) ? extra : "./src/components/shell/no-admin-spend-extra.tsx";
+}

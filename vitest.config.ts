@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import { adminExtraFile } from "./src/components/shell/admin-extra-file";
+import { adminExtraFile, adminSpendExtraFile } from "./src/components/shell/admin-extra-file";
 import { planPolicyFile, PLAN_POLICY_PARTS } from "./src/lib/billing/policy-file";
 import { billingProviderFile } from "./src/lib/billing/provider-file";
 import { PUBLIC_SIGNUP_PARTS, publicSignupFile } from "./src/lib/public-signup/file";
@@ -17,6 +17,7 @@ export default defineConfig({
       ...PUBLIC_SIGNUP_PARTS.map((part) => ({ find: new RegExp(`^@/public-signup/${part}$`), replacement: fileURLToPath(new URL(publicSignupFile(root, part), import.meta.url)) })),
       { find: /^@\/billing-provider$/, replacement: fileURLToPath(new URL(billingProviderFile(root), import.meta.url)) },
       { find: /^@\/admin-extra$/, replacement: fileURLToPath(new URL(adminExtraFile(root), import.meta.url)) },
+      { find: /^@\/admin-spend-extra$/, replacement: fileURLToPath(new URL(adminSpendExtraFile(root), import.meta.url)) },
       { find: "@", replacement: fileURLToPath(new URL("./src", import.meta.url)) },
     ],
   },
