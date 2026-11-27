@@ -91,6 +91,31 @@ describe.skipIf(!ready)("importCrawl", () => {
     return { at, issues, crawl: await crawlRow(row.id), lookups: dfsPost.mock.calls.filter(([path]) => path === "on_page/duplicate_content") };
   }
 
+  it("imports a crawl once when two workers import it at the same time", async () => {
+    const { crawl, project } = await seed();
+    const at = (path: string) => `https://${project.domain}${path}`;
+    const page = (path: string) => ({ url: at(path), resource_type: "html", status_code: 404, meta: null, checks: {}, page_timing: null });
+    dfsPost.mockReset();
+    dfsPost.mockImplementation(async (path: string) => {
+      if (path === "on_page/pages") return items([page("/a"), page("/b")]);
+      if (path === "on_page/links") return items([{ type: "anchor", link_from: at("/a"), link_to: at("/b"), direction: "internal", dofollow: true, is_broken: true, text: "B" }]);
+      return items([]);
+    });
+    const row = await crawl({ status: "importing", taskId: "task-twice" });
+    const summary = { crawl_status: { pages_crawled: 2 } } as never;
+    await Promise.all([importCrawl(row, summary), importCrawl(row, summary)]);
+    const count = async (t: typeof s.auditPages | typeof s.auditLinks | typeof s.auditIssues) => (await db.select().from(t).where(eq(t.crawlId, row.id))).length;
+    expect(await count(s.auditPages)).toBe(2);
+    expect(await count(s.auditLinks)).toBe(1);
+    const done = await crawlRow(row.id);
+    expect(done.status).toBe("done");
+    // A third import, started after the crawl is done, stops at its claim: no lookups, no rewrite.
+    dfsPost.mockClear();
+    await importCrawl(row, summary);
+    expect(dfsPost).not.toHaveBeenCalled();
+    expect(await crawlRow(row.id)).toMatchObject({ status: "done", finishedAt: done.finishedAt });
+  });
+
   it("keeps a duplicate meta tag finding only on pages that really repeat a title or description", async () => {
     const { crawl, project } = await seed();
     const at = (path: string) => `https://${project.domain}${path}`;
