@@ -1,6 +1,6 @@
 import createMDX from "@next/mdx";
 import type { NextConfig } from "next";
-import { adminExtraFile } from "./src/components/shell/admin-extra-file";
+import { adminExtraFile, adminSpendExtraFile } from "./src/components/shell/admin-extra-file";
 import { planPolicyAliases } from "./src/lib/billing/policy-file";
 import { billingProviderFile } from "./src/lib/billing/provider-file";
 import { docsRedirects, hasMarketingSite } from "./src/lib/docs-redirects";
@@ -81,9 +81,9 @@ const nextConfig: NextConfig = {
   },
   turbopack: {
     // A billing provider where the copy has one, none otherwise (src/lib/billing/provider.ts), extra
-    // Admin pages where they exist (src/components/shell/admin-extra-file.ts), and public sign-up
+    // Admin pages and Spend sections where they exist (src/components/shell/admin-extra-file.ts), and public sign-up
     // where the copy has it (src/lib/public-signup/file.ts).
-    resolveAlias: { "@/billing-provider": billingProviderFile(process.cwd()), "@/admin-extra": adminExtraFile(process.cwd()), ...planPolicyAliases(process.cwd()), ...publicSignupAliases(process.cwd()) },
+    resolveAlias: { "@/billing-provider": billingProviderFile(process.cwd()), "@/admin-extra": adminExtraFile(process.cwd()), "@/admin-spend-extra": adminSpendExtraFile(process.cwd()), ...planPolicyAliases(process.cwd()), ...publicSignupAliases(process.cwd()) },
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],
