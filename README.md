@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center"><strong>Powerful SEO. Without the premium price.</strong></p>
+<p align="center"><strong>The open source SEO tool your AI agent can use.</strong></p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-2F5FC4" alt="Licence: AGPL-3.0"></a>
