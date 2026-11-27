@@ -31,6 +31,11 @@ const TO_DO: ListStatus[] = ["open"];
 
 type Run = (tool: string, body: () => Promise<object>) => Promise<CallToolResult>;
 
+/** A dry run's answer. One that would change nothing has nothing to confirm: `skipped` says why. */
+function dryRun<T extends object>(res: T, changes: number, next: string) {
+  return changes ? { dry_run: true, ...res, needs_confirmation: true, next } : { dry_run: true, ...res, needs_confirmation: false };
+}
+
 export function registerFixTools(server: McpServer, principal: Principal, run: Run) {
   const ws = { workspaceId: principal.workspaceId };
   const actor: Actor = { userId: principal.userId, source: "mcp" };
@@ -118,7 +123,7 @@ export function registerFixTools(server: McpServer, principal: Principal, run: R
         if (args.confirm) await counted();
         const scope = projectScope(await resolveLiveProject(ws, args.project));
         const res = await markFixesApplied(scope, actor, { ids: args.ids, commit: args.commit, files: args.files, note: args.note }, { dryRun: !args.confirm });
-        return args.confirm ? res : { dry_run: true, ...res, needs_confirmation: true, next: "Call again with confirm: true to record this." };
+        return args.confirm ? res : dryRun(res, res.applied.length, "Call again with confirm: true to record this.");
       }),
   );
 
@@ -144,7 +149,7 @@ export function registerFixTools(server: McpServer, principal: Principal, run: R
         if (args.confirm) await counted();
         const scope = projectScope(await resolveLiveProject(ws, args.project));
         const res = await recordChanges(scope, actor, { urls: args.urls, commit: args.commit, files: args.files, note: args.note, expect: args.expect, linkedFrom: args.linked_from }, { dryRun: !args.confirm });
-        return args.confirm ? res : { dry_run: true, ...res, needs_confirmation: true, next: "Call again with confirm: true to record this." };
+        return args.confirm ? res : dryRun(res, res.recorded.length, "Call again with confirm: true to record this.");
       }),
   );
 
@@ -177,7 +182,7 @@ export function registerFixTools(server: McpServer, principal: Principal, run: R
         if (args.confirm) await counted();
         const scope = projectScope(await resolveLiveProject(ws, args.project));
         const res = await dismissFixes(scope, actor, { ids: args.ids, reason: args.reason }, { dryRun: !args.confirm });
-        return args.confirm ? res : { dry_run: true, ...res, needs_confirmation: true, next: "Call again with confirm: true to dismiss these." };
+        return args.confirm ? res : dryRun(res, res.dismissed.length, "Call again with confirm: true to dismiss these.");
       }),
   );
 }

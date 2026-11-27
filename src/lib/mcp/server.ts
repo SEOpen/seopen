@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ACTION_STATUSES } from "@/modules/ai/action-list";
 import { SEVERITIES } from "@/modules/audit/taxonomy";
 import { LIKELY_BOT_RULE } from "@/modules/google/bot-queries";
-import { aiActionsData, aiVisibilityData, alertsData, analyticsData, auditData, backlinksData, COMPARE, contentBriefData, contentBriefsData, DEFAULT_ACTIONS_PER_PROMPT, GSC_DIMENSIONS, keywordListsData, listProjectsData, localData, MAX_LIMIT, overviewData, RANK_CHANGES, rankingsData, searchConsoleData, ToolError, usageData, whatChangedData, whoamiData } from "./data";
+import { aiActionsData, aiVisibilityData, alertsData, analyticsData, auditData, backlinksData, COMPARE, contentBriefData, contentBriefsData, DEFAULT_ACTION_PROMPTS, DEFAULT_ACTIONS_PER_PROMPT, GSC_DIMENSIONS, keywordListsData, listProjectsData, localData, MAX_LIMIT, overviewData, RANK_CHANGES, rankingsData, searchConsoleData, ToolError, usageData, whatChangedData, whoamiData } from "./data";
 import { withBillingContext } from "@/lib/billing/context";
 import { siteOrigin } from "@/lib/hosts";
 import { OpError } from "@/lib/ops";
@@ -45,7 +45,8 @@ const READS_GOOGLE: ToolAnnotations = { ...READ_ONLY, openWorldHint: true };
 
 const project = z.union([z.string(), z.number().int()]).optional().describe("Project id or domain, from list_projects. Optional when the workspace has one project.");
 const limit = z.number().int().min(1).max(MAX_LIMIT).optional().describe(`Rows to return (default 25, at most ${MAX_LIMIT}).`);
-const rankDays = z.union([z.literal(7), z.literal(30), z.literal(90), z.literal(365)]);
+// The SDK words a failed union as "Invalid input": name the values instead.
+const rankDays = z.union([z.literal(7), z.literal(30), z.literal(90), z.literal(365)], { error: "Must be 7, 30, 90 or 365." });
 const compare = z.enum(COMPARE).optional().describe("Compare with the period just before (default) or the same dates a year earlier.");
 const days = z.number().int().min(1).max(480).optional();
 
@@ -103,7 +104,7 @@ export function buildServer(principal: Principal): McpServer {
     {
       title: "Project overview",
       description:
-        "Everything on the project's dashboard: each module's latest numbers (Search Console, Analytics, rank tracking, domain, audit, backlinks, AI visibility, keyword lists), the period they cover, what they compare against, and the biggest changes. Modules with no data say how to set them up. A module with `last_run_failed` tried and couldn't: its newest check failed or its connection needs redoing, so its numbers are older than that (`at`), and with no numbers it was set up and has no results, whatever its status says. `needs_a_look` is the same as one sentence, null when nothing is failing, and a change from such a module carries a `note`." +
+        "Everything on the project's dashboard: each module's latest numbers (Search Console, AI visibility, Analytics, rank tracking, Local SEO, domain, audit, fixes, backlinks, keyword lists), the period they cover, what they compare against, and the biggest changes. Modules with no data say how to set them up. A module with `last_run_failed` tried and couldn't: its newest check failed or its connection needs redoing, so its numbers are older than that (`at`), and with no numbers it was set up and has no results, whatever its status says. `needs_a_look` is the same as one sentence, null when nothing is failing, and a change from such a module carries a `note`." +
           (rules.hasPlans ? " It's left out when the plan rules the check out." : "") +
           " `can_retry` says whether running the check again could work; `blocked` says why not. The rank module's `not_confirmed` is how much of its latest check rests on positions no look could confirm (see get_rankings), and `page_one_gains` how many keywords are on page one on such a position and weren't at the comparison. The AI module's `data.failed` counts prompts whose newest answer failed, which `data.current` leaves out.",
       inputSchema: z.object({ project }),
@@ -255,7 +256,7 @@ export function buildServer(principal: Principal): McpServer {
       inputSchema: z.object({
         project,
         status: z.enum([...ACTION_STATUSES, "all"]).optional().describe("open (default), done, dismissed or all."),
-        limit: limit.describe("Prompts to return (default 25)."),
+        limit: limit.describe(`Prompts to return (default ${DEFAULT_ACTION_PROMPTS}). total_prompts says how many there are.`),
         actions_per_prompt: z
           .number()
           .int()

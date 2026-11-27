@@ -674,6 +674,10 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       expect(r.window.note).toMatch(/^Tracking began on 2026-10-20/);
       const week = (await call(client, "get_rankings", { project: A.project.id, days: 7 })).structuredContent as { window: Record<string, unknown> };
       expect(week.window).toEqual({ start: "2026-10-20", end: "2026-10-27", days: 7 });
+      // A window it doesn't offer names the ones it does.
+      const odd = await call(client, "get_rankings", { project: A.project.id, days: 45 });
+      expect(odd.isError).toBe(true);
+      expect(odd.content[0].text).toContain("Must be 7, 30, 90 or 365.");
       // "none" is a value an agent can filter by.
       const none = await call(client, "get_rankings", { project: A.project.id, days: 30, change: "none" });
       expect(none.isError).toBeFalsy();
@@ -1350,6 +1354,8 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       expect((await call(client, "update_alert_rule", { ...args, confirm: true })).structuredContent).toMatchObject({ enabled: false, changed: true, message: "Turned “A tracked keyword leaves the top 10” off." });
       const after = (await call(client, "list_alerts", { project: p.id })).structuredContent as { rules: { rule: string; enabled: boolean }[] };
       expect(after.rules.find((r) => r.rule === "left-top-10")?.enabled).toBe(false);
+      // Already off: nothing to confirm.
+      expect((await call(client, "update_alert_rule", args)).structuredContent).toMatchObject({ needs_confirmation: false, changed: false });
     });
 
     it("create_content_brief quotes without confirm, needs max_credits for paid lookups, and saves nothing until then", async () => {
@@ -1460,7 +1466,7 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       for (const tool of ["add_local_keywords", "start_local_check"]) {
         const missing = await call(client, tool, { project: W.project.id, business: 2_000_000_000, keywords: ["plumber"] });
         expect(missing.isError, tool).toBe(true);
-        expect(missing.content[0].text, tool).toBe("No listing with that id in this project.");
+        expect(missing.content[0].text, tool).toBe("No listing with that id in this project. get_local_seo lists its listings and their ids.");
       }
       const ledger = await db.$count(s.apiLedger, eq(s.apiLedger.workspaceId, W.ws.id));
       expect(ledger).toBe(0);
@@ -1654,6 +1660,11 @@ describe.skipIf(!ready)("MCP endpoint", () => {
       expect(early.structuredContent).toMatchObject({ fixes: [{ status: "applied", live_check: { state: "still_there" } }] });
 
       vi.mocked(safeFetch).mockResolvedValue(page("A title of a sensible length"));
+      // Applied already, so a second dry run would change nothing and asks for no confirmation.
+      const again = (await call(client, "mark_fix_applied", { ids: [fix.id], commit: "abc123" })).structuredContent!;
+      expect(again).toMatchObject({ dry_run: true, needs_confirmation: false, applied: [] });
+      expect(again).not.toHaveProperty("next");
+
       const live = await call(client, "verify_fix", { ids: [99_999_999, fix.id] });
       expect(live.isError).toBeFalsy();
       expect(live.structuredContent).toMatchObject({ fixes: [{ status: "live", live_check: { state: "fixed" } }], skipped: [{ id: 99_999_999, why: "There's no fix with that id in this project." }] });

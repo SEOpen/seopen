@@ -267,7 +267,8 @@ export function mainSearch<T extends SearchRow>(rows: T[], brand: Set<string>, h
 export const INTENT_SEARCHES = 10;
 
 /**
- * Two of the page's top searches that share no topic word, each at least partly in the title: a title that
+ * Two of the page's top searches that share no topic word (counting run-together words and initials as
+ * `coverage` does), each at least partly in the title: a title that
  * tries to win both may serve neither. Brand searches are left out, since a brand name in a title is normal.
  * The pair with the most impressions together, or null.
  */
@@ -284,7 +285,8 @@ export function titleIntents<T extends SearchRow>(title: string | null, rows: T[
   let best: [T, T] | null = null;
   for (let i = 0; i < top.length; i++) {
     for (let j = i + 1; j < top.length; j++) {
-      if ([...top[i].t].some((t) => top[j].t.has(t))) continue;
+      // Words shared as coverage reads them: "check backlinks" and "checkbacklinks" are one search, as are "seo" and "search engine optimization".
+      if (coverage(top[i].r.query, top[j].t).found.length || coverage(top[j].r.query, top[i].t).found.length) continue;
       const pair: [T, T] = [top[i].r, top[j].r];
       if (!best || pair[0].impressions + pair[1].impressions > best[0].impressions + best[1].impressions) best = pair;
     }
