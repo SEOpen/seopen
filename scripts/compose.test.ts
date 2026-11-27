@@ -30,4 +30,8 @@ describe("compose.yaml and docs/self-hosting.md", () => {
     // and pnpm logged "ELIFECYCLE Command failed".
     expect(service(read("compose.yaml"), "worker")).toMatch(/command: \["node", "--import", "tsx", "src\/worker.ts"\]/);
   });
+
+  it("names the image after the compose project, so copies on one machine keep their own", () => {
+    expect(read("compose.yaml")).toMatch(/^  image: \$\{COMPOSE_PROJECT_NAME\}:local$/m);
+  });
 });
