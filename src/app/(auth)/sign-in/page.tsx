@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { AuthCardSkeleton } from "@/components/auth/auth-card-skeleton";
 import { SignInForm } from "@/components/auth/sign-in-form";
 import { Card, CardBody } from "@/components/ui/card";
 import { Callout } from "@/components/ui/callout";
@@ -13,7 +15,16 @@ const ERRORS: Record<string, string> = {
   account_not_linked: "That Google account's email isn't verified, so it can't be linked. Sign in with your email and password.",
 };
 
-export default async function SignInPage({ searchParams }: PageProps<"/sign-in">) {
+/** The query is read inside Suspense, so the rest of the route prerenders. */
+export default function SignInPage({ searchParams }: PageProps<"/sign-in">) {
+  return (
+    <Suspense fallback={<AuthCardSkeleton />}>
+      <SignInCard searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function SignInCard({ searchParams }: Pick<PageProps<"/sign-in">, "searchParams">) {
   const sp = await searchParams;
   const next = safeCallback(sp.next);
   const errors: Record<string, string> = { ...ERRORS, ...signupPage.signInErrors() };

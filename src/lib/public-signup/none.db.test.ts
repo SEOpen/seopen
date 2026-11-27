@@ -105,7 +105,10 @@ describe.skipIf(!ready)("a copy without public sign-up", () => {
   });
 
   it("offers no way to sign up on the sign-in page", async () => {
-    const html = renderToStaticMarkup(await SignInPage({ searchParams: Promise.resolve({}) } as never));
+    // The page is a Suspense boundary around the card that reads the query: render that card.
+    type Element = { props: { children: { type: (props: object) => Promise<React.ReactElement>; props: object } } };
+    const card = (SignInPage({ searchParams: Promise.resolve({}) } as never) as unknown as Element).props.children;
+    const html = renderToStaticMarkup(await card.type(card.props));
     expect(html).toContain("Accounts are made by whoever runs this copy of SEOpen.");
     expect(html).not.toMatch(/sign-up|waitlist|beta/);
   });
