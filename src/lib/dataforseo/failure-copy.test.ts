@@ -393,6 +393,31 @@ describe("an AI run with no answers", () => {
   });
 });
 
+describe("a model DataForSEO no longer offers", () => {
+  const dropped = "40501 Invalid Field: 'model_name'.";
+
+  it("is SEOpen's side, never the customer's prompt", () => {
+    expect(storedFailureKind(dropped)).toBe("our-side");
+    expect(plainAiFailure(dropped)).not.toMatch(/wording|prompt/i);
+    expect(plainAiFailure(dropped)).toMatch(/nothing for you to fix/);
+    expect(plainAiFailure(aiRunFailure([dropped, dropped]))).toMatch(/nothing for you to fix/);
+    expect(storedFailureKind(aiRunFailure([dropped, dropped]))).toBe("our-side");
+    expect(plainFailure(new DataForSEOError("Invalid Field: 'model_name'.", 40501, "ai_optimization/claude/llm_responses/live")).message).toMatch(/nothing for you to fix/);
+  });
+
+  it("is read back from what a failed answer stores", () => {
+    const stored = storedFailure(new DataForSEOError("Invalid Field: 'model_name'.", 40501, "ai_optimization/claude/llm_responses/live"));
+    expect(stored).toBe(dropped);
+    expect(plainAiFailure(stored)).toMatch(/nothing for you to fix/);
+  });
+
+  it("leaves another 40501 a rejected prompt", () => {
+    expect(storedFailureKind("40501 Invalid Field: 'user_prompt'.")).toBe("rejected");
+    expect(plainAiFailure("40501 Invalid Field: 'user_prompt'.")).toMatch(/wording changes/);
+    expect(storedFailureKind("40502 model_name something")).toBe("rejected");
+  });
+});
+
 describe("the crawl's stop line on a summary", () => {
   it("passes no vendor status up", () => {
     expect(plainCrawlSummary("The crawl stopped: terminated by server").message).toBe("The crawl stopped before it reached any pages.");
@@ -434,6 +459,14 @@ describe("a failed AI Overview check", () => {
 
 describe("on a self-hosted copy", () => {
   beforeEach(() => vi.stubEnv("SEOPEN_HAS_SITE", ""));
+
+  it("says to update SEOpen when DataForSEO dropped the model it asks for", () => {
+    const dropped = "40501 Invalid Field: 'model_name'.";
+    for (const line of [plainAiFailure(dropped), plainAiFailure(aiRunFailure([dropped]))]) {
+      expect(line).toMatch(/Update SEOpen/);
+      expect(line).not.toMatch(/wording|DATAFORSEO_LOGIN|our side/);
+    }
+  });
 
   it("says DataForSEO isn't set up, and which settings to add, when there's no login", () => {
     const failure = plainFailure(new DataForSEOError("DataForSEO credentials are missing: DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD aren't set", 0, ""));

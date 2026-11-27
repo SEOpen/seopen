@@ -37,6 +37,13 @@ function dataName(endpoint: string): string {
 const isRejectedRequest = (statusCode: number) => statusCode >= 40500 && statusCode < 40600;
 
 /**
+ * A 40501 that names `model_name`: DataForSEO no longer takes the model SEOpen asks for (the models in
+ * src/modules/ai/platforms.ts). That's SEOpen's own request, not the customer's prompt, so it's never
+ * worded as a rejected prompt. Any other 40501 field, and any other 405xx, stays a rejected request.
+ */
+const isDroppedModel = (statusCode: number, message: string) => statusCode === 40501 && /model_name/i.test(message);
+
+/**
  * Task failures that come and go, so a person's retry can work (docs/dataforseo.md): the two rate
  * limits, 40101 and 40106 (seen on 3 of 54 Live looks) and 40103 (section 5 says to retry it). This
  * only decides what the words and the Retry button say. Nothing here retries on its own, and a Retry
@@ -85,6 +92,11 @@ function accountFix(problem: AccountProblem, statusCode: number): string {
   }
 }
 
+/** The next step when DataForSEO no longer takes a model SEOpen asks for. A self-hosted copy's owner gets the fix by updating. */
+function droppedModelFix(): string {
+  return isHostedService() ? OUR_SIDE : "This copy of SEOpen asks for an AI model DataForSEO no longer offers. Update SEOpen (git pull, then docker compose up -d --build), which keeps its models current.";
+}
+
 /** The next step for a failure SEOpen can't name: on a self-hosted copy, where its reason is. */
 export function unknownFailureNextStep(): string {
   return isHostedService() ? OUR_SIDE : "The reason is in the server log.";
@@ -93,6 +105,7 @@ export function unknownFailureNextStep(): string {
 /** Words for a failure SEOpen can name, or null when it's something else. */
 function knownFailure(error: unknown): PlainFailure | null {
   if (error instanceof DataForSEOError) {
+    if (isDroppedModel(error.statusCode, error.message)) return { title: `${dataName(error.endpoint)} isn't available right now`, message: droppedModelFix(), retry: false };
     if (isRejectedRequest(error.statusCode)) {
       return { title: "That lookup didn't work", message: "Check the domain or keyword, then run it again.", retry: false };
     }
@@ -202,8 +215,9 @@ export function storedFailureKind(stored: string | null): "refusal" | "rejected"
   const text = stored ?? "";
   if (isStoredRefusal(text)) return "refusal";
   if (text === AI_RUN_REJECTED) return "rejected";
-  if (text === AI_RUN_UNAVAILABLE) return "our-side";
+  if (text === AI_RUN_UNAVAILABLE || text === AI_RUN_MODEL_GONE) return "our-side";
   const statusCode = storedCode(text);
+  if (isDroppedModel(statusCode, text)) return "our-side";
   if (isRejectedRequest(statusCode)) return "rejected";
   return accountProblem({ statusCode, message: text }) ? "our-side" : "other";
 }
@@ -214,6 +228,7 @@ export function storedFailureKind(stored: string | null): "refusal" | "rejected"
  */
 function storedNoRetry(text: string, service: string, rejected: string): string | null {
   const statusCode = storedCode(text);
+  if (isDroppedModel(statusCode, text)) return `${service} isn't available right now. ${droppedModelFix()}`;
   if (isRejectedRequest(statusCode)) return rejected;
   const problem = accountProblem({ statusCode, message: text });
   return problem ? `${service} isn't available right now. ${accountFix(problem, statusCode)}` : null;
@@ -289,10 +304,13 @@ export const AI_RUN_NO_ANSWERS = "None of this run's answers came back";
 export const AI_RUN_TIMED_OUT = "Timed out: no answer came back in time";
 const AI_RUN_REJECTED = "The AI answer service rejected this run's prompts";
 const AI_RUN_UNAVAILABLE = "The AI answer service wasn't available for this run";
+/** Every answer failed because DataForSEO no longer takes the model asked for. */
+const AI_RUN_MODEL_GONE = "The AI answer service no longer offers the model this run asked for";
 
 /** What to store on an AI run that closed with no answer, from what its answers stored. Budget refusals close the run elsewhere. */
 export function aiRunFailure(answerErrors: (string | null)[]): string {
   if (answerErrors.length && answerErrors.every((e) => /^(0 )?Timed out/.test(e ?? ""))) return AI_RUN_TIMED_OUT;
+  if (answerErrors.length && answerErrors.every((e) => isDroppedModel(storedCode(e ?? ""), e ?? ""))) return AI_RUN_MODEL_GONE;
   const kinds = new Set(answerErrors.map(storedFailureKind));
   if (kinds.size === 1 && kinds.has("rejected")) return AI_RUN_REJECTED;
   if (kinds.size === 1 && kinds.has("our-side")) return AI_RUN_UNAVAILABLE;
@@ -307,6 +325,7 @@ export function plainAiFailure(stored: string | null): string {
   if (/^(0 )?Timed out/.test(text)) return "No answer came back in time. Run it again.";
   if (text === AI_RUN_NO_ANSWERS) return `${AI_RUN_NO_ANSWERS}. Run it again in a minute.`;
   if (text === AI_RUN_REJECTED) return `${AI_RUN_REJECTED}. Running it again won't help unless the wording changes.`;
+  if (text === AI_RUN_MODEL_GONE) return `The AI answer service isn't available right now. ${droppedModelFix()}`;
   if (text === AI_RUN_UNAVAILABLE) return `The AI answer service isn't available right now. ${isHostedService() ? OUR_SIDE : `Check DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in the env file, and the DataForSEO account at ${DFS_DASHBOARD}.`}`;
   // A run stops like this on a billing refusal too, so this line can't promise that another run would work.
   if (text === "Run stopped before this task was posted") return "The run stopped before this prompt was sent.";

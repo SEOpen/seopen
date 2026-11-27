@@ -297,6 +297,7 @@ The cache key is the endpoint path plus the canonicalised JSON body, with keys s
 | 40401, 40403 | task not found, results expired (older than about 1 month) | drop or re-post |
 | 40501–40506 | invalid field, empty or invalid body, unknown fields, 10M+ intersections, old location data | bug or validation error. Refresh locations on 40505 |
 | 40501 on instant_pages | duplicate crawl host still queued | wait, then retry |
+| 40501 naming `model_name` on `llm_responses` | the model SEOpen asks for is gone from that platform's `…/models` list | SEOpen's side, not the prompt: change the model in `src/modules/ai/platforms.ts`. The daily `billing.alerts` job checks the lists and emails the owner |
 | 40601, 40602 | task handed over / in queue | not ready. Poll again later, don't resubmit |
 | 50000, 50001 | internal error | retry with backoff, up to 3 times |
 | 50301, 50303 | 3rd-party unavailable, update in progress | retry after a few minutes |
