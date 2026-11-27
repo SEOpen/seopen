@@ -15,7 +15,7 @@ const ready = await testDb();
 
 const { db } = await import("@/db");
 const s = await import("@/db/schema");
-const { failUnqueuedCrawl, activeCrawl, importCrawl, runLighthouse, confirmPageChecks } = await import("./crawl");
+const { failUnqueuedCrawl, activeCrawl, importCrawl, runLighthouse, confirmPageChecks, pollActiveCrawls } = await import("./crawl");
 const { CRAWL_NOT_QUEUED, plainLighthouseFailure } = await import("@/lib/dataforseo/failure-copy");
 
 async function seed() {
@@ -54,6 +54,22 @@ describe.skipIf(!ready)("failUnqueuedCrawl", () => {
     const row = await theirs.crawl();
     await failUnqueuedCrawl(mine.scope, row.id);
     expect((await crawlRow(row.id)).status).toBe("queued");
+  });
+});
+
+describe.skipIf(!ready)("pollActiveCrawls", () => {
+  it("past its deadline, polls nothing and counts what it left as running", async () => {
+    const { crawl } = await seed();
+    const row = await crawl({ status: "crawling", taskId: `t-${randomUUID()}`, startedAt: new Date() });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    dfsPost.mockReset();
+    const running = await pollActiveCrawls({ deadline: 0 });
+    expect(running).toBeGreaterThanOrEqual(1);
+    expect(dfsPost).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/stopped at its deadline/));
+    expect((await crawlRow(row.id)).status).toBe("crawling");
+    warn.mockRestore();
+    await db.update(s.auditCrawls).set({ status: "failed" }).where(eq(s.auditCrawls.id, row.id));
   });
 });
 

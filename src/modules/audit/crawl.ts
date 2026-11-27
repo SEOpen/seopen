@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, gt, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   apiLedger,
@@ -830,18 +830,35 @@ export async function pollCrawl(crawl: AuditCrawl): Promise<"running" | "done" |
 }
 
 /**
- * Polls every crawl that has been posted and isn't finished. Global on purpose: polling is free,
- * and every crawl row carries its own workspace, which each call and import uses. Returns how many
- * posted crawls are still running, one that failed to poll included, so audit.poll can look again soon.
+ * How long one audit.poll run may keep starting work, well inside its 30-minute expiry. Past it, the
+ * crawls not reached yet wait for the next minute's run. pg-boss fails a job at its expiry but lets
+ * the handler run on, and meanwhile no other poll runs, so every workspace's crawls would wait.
+ * Work already started finishes: this can't cut short one slow import or a hung provider call.
  */
-export async function pollActiveCrawls(): Promise<number> {
+export const POLL_DEADLINE_MS = 20 * 60_000;
+
+/**
+ * Polls every crawl that has been posted and isn't finished, the one polled longest ago first, so a
+ * run that stops at `deadline` (a Date.now() value) leaves the same crawls behind only once. Global on
+ * purpose: polling is free, and every crawl row carries its own workspace, which each call and import
+ * uses. Returns how many posted crawls are still running, one that failed to poll or wasn't reached
+ * included, so audit.poll can look again soon.
+ */
+export async function pollActiveCrawls({ deadline = Date.now() + POLL_DEADLINE_MS }: { deadline?: number } = {}): Promise<number> {
   const rows = await db
     .select()
     .from(auditCrawls)
-    .where(inArray(auditCrawls.status, ["crawling", "importing"]));
+    .where(inArray(auditCrawls.status, ["crawling", "importing"]))
+    .orderBy(sql`${auditCrawls.lastPolledAt} asc nulls first`, asc(auditCrawls.id));
   const errors: unknown[] = [];
   let running = 0;
+  let tried = 0;
   for (const crawl of rows) {
+    if (Date.now() >= deadline) {
+      console.warn(`[audit] poll stopped at its deadline: ${rows.length - tried} of ${rows.length} crawls wait for the next run`);
+      return running + rows.length - tried;
+    }
+    tried++;
     try {
       if ((await pollCrawl(crawl)) === "running") running++;
     } catch (err) {
@@ -850,6 +867,7 @@ export async function pollActiveCrawls(): Promise<number> {
       console.error(`[audit] poll of crawl ${crawl.id} failed`, err);
     }
   }
+  if (Date.now() >= deadline) return running;
   // Post crawls whose start job was lost (e.g. the worker was down), and recover interrupted posts.
   const stuck = await db
     .select({ id: auditCrawls.id, status: auditCrawls.status, workspaceId: auditCrawls.workspaceId, projectId: auditCrawls.projectId })

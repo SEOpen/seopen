@@ -1,7 +1,7 @@
 import { enqueue } from "@/lib/jobs/boss";
 import { defineJob, type AnyJobDef } from "@/lib/jobs/types";
 import { jobScope, type ProjectJobPayload } from "@/lib/workspace";
-import { expireStaleLighthouse, pollActiveCrawls, projectsWithWeeklyCrawl, runLighthouse, startCrawl, startScheduledCrawl } from "./crawl";
+import { expireStaleLighthouse, POLL_DEADLINE_MS, pollActiveCrawls, projectsWithWeeklyCrawl, runLighthouse, startCrawl, startScheduledCrawl } from "./crawl";
 
 /**
  * audit.poll's second look, while a crawl is running. Cron fires at most once a minute, so a run that
@@ -31,12 +31,14 @@ export const jobs: AnyJobDef[] = [
     policy: "singleton",
     retryLimit: 0,
     expireInSeconds: 30 * 60,
+    // A run stops starting new work at POLL_DEADLINE_MS, inside the expiry, and leaves the rest for the next.
     handler: async () => {
-      const running = await pollActiveCrawls();
+      const deadline = Date.now() + POLL_DEADLINE_MS;
+      const running = await pollActiveCrawls({ deadline });
       await expireStaleLighthouse();
-      if (running > 0) {
+      if (running > 0 && Date.now() + SECOND_POLL_MS < deadline) {
         await wait(SECOND_POLL_MS);
-        await pollActiveCrawls();
+        await pollActiveCrawls({ deadline });
       }
     },
   }),

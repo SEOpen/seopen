@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const crawl = vi.hoisted(() => ({
   expireStaleLighthouse: vi.fn(async () => undefined),
-  pollActiveCrawls: vi.fn(async () => 0),
+  POLL_DEADLINE_MS: 20 * 60_000,
+  pollActiveCrawls: vi.fn<(opts?: { deadline: number }) => Promise<number>>(async () => 0),
   projectsWithWeeklyCrawl: vi.fn(),
   runLighthouse: vi.fn(),
   startCrawl: vi.fn(),
@@ -50,5 +51,16 @@ describe("audit.poll", () => {
     await vi.advanceTimersByTimeAsync(5 * SECOND_POLL_MS);
     await run;
     expect(crawl.pollActiveCrawls).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips the second look when the run is near its deadline, and passes the deadline down", async () => {
+    crawl.pollActiveCrawls.mockImplementationOnce(async () => {
+      vi.advanceTimersByTime(crawl.POLL_DEADLINE_MS - SECOND_POLL_MS + 1);
+      return 2;
+    });
+    const start = Date.now();
+    await poll.handler({}, {} as never);
+    expect(crawl.pollActiveCrawls).toHaveBeenCalledTimes(1);
+    expect(crawl.pollActiveCrawls).toHaveBeenCalledWith({ deadline: start + crawl.POLL_DEADLINE_MS });
   });
 });
