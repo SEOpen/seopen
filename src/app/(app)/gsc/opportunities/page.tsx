@@ -1,8 +1,8 @@
 import { DataTable } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { Section } from "@/components/ui/section";
-import { formatNumber } from "@/lib/format";
-import { projectScope } from "@/lib/workspace";
+import { formatDate, formatNumber } from "@/lib/format";
+import { projectScope, workspaceTimeZone } from "@/lib/workspace";
 import { SegmentedLinks } from "@/components/ui/segmented-links";
 import { gscSource, noisyNote, opportunitiesSentence, opportunityFigures, pageLabels, searchConsoleSpan, urlPath } from "@/modules/google/brief";
 import { likelyBotNote } from "@/modules/google/bot-queries";
@@ -12,6 +12,8 @@ import { GscBriefing, gscContext } from "@/modules/google/ui/context";
 import { GscTable } from "@/modules/google/ui/gsc-table";
 import { hrefWith, PeriodControls } from "@/modules/google/ui/period";
 import { GscTabs } from "@/modules/google/ui/status";
+import { brandTerms } from "@/modules/fixes/coverage";
+import { latestCrawlPages, opportunityHints } from "@/modules/fixes/opportunity-hints";
 
 export const metadata = { title: "Opportunities · Search Console" };
 
@@ -47,7 +49,17 @@ export default async function OpportunitiesPage({ searchParams }: PageProps<"/gs
   const striking = allStriking.slice(0, TABLE_ROWS);
   const low = allLow.slice(0, TABLE_ROWS);
   const down = allDown.slice(0, TABLE_ROWS);
-  const bestPage = await topPageByQuery(projectScope(project), periods.current, [...(byPage ? [] : striking), ...low].map((r) => r.key));
+  const closePages = close?.pages.slice(0, TABLE_ROWS) ?? [];
+  const bestPage = await topPageByQuery(projectScope(project), periods.current, [...(byPage ? closePages.map((p) => p.topQuery.query) : striking.map((r) => r.key)), ...low.map((r) => r.key)]);
+  // What to change, from the newest crawl: on each listed page, or on each listed search's best page.
+  const hintPages = byPage ? closePages.map((p) => p.page) : striking.map((r) => bestPage.get(r.key)).filter((p): p is string => !!p);
+  const [crawl, timeZone] = await Promise.all([latestCrawlPages(projectScope(project), hintPages), workspaceTimeZone(projectScope(project))]);
+  const brand = brandTerms(project.domain);
+  const hintFor = (query: string, page: string | undefined, best: string | undefined) =>
+    !page || !crawl ? "" : opportunityHints({ query, page, bestPage: best, crawl: crawl.pages.get(page) ?? null, medianLinksIn: crawl.medianLinksIn, brand }).join("; ");
+  const crawlNote = crawl
+    ? ` What to change is what the site audit crawl${crawl.at ? ` of ${formatDate(crawl.at, timeZone)}` : ""} found on the page; Refresh this page reads the live one.`
+    : " Run a site audit to see what to change on each page.";
   const withPage = (r: { key: string }): Record<string, unknown> => {
     const page = bestPage.get(r.key) ?? "";
     return { ...r, page, pagePath: page ? urlPath(page) : "", botNote: likelyBotNote(r.key) };
@@ -60,7 +72,6 @@ export default async function OpportunitiesPage({ searchParams }: PageProps<"/gs
   const win = { periods, compare: choice.compare, first: data.first };
   const span = searchConsoleSpan(periods.current);
   const noisy = noisyNote(data);
-  const closePages = close?.pages.slice(0, TABLE_ROWS) ?? [];
   const closeLabel = pageLabels(closePages.map((p) => p.page));
   const path = "/gsc/opportunities";
   const strikingControls = (
@@ -94,6 +105,7 @@ export default async function OpportunitiesPage({ searchParams }: PageProps<"/gs
                   score
                 </span>
                 , which favours many impressions close to page one. {span}.{shownNote(close.pages.length, "with the highest scores")}
+                {crawlNote}
                 {close.truncated ? " Read from the searches with the most impressions only." : ""}
               </p>
               {noisy && <p className="mt-1 text-warn">{noisy}</p>}
@@ -111,9 +123,10 @@ export default async function OpportunitiesPage({ searchParams }: PageProps<"/gs
               { key: "bestPosition", label: "Best position", format: "position" },
               { key: "topQuery", label: "Top search", format: "link", href: "/gsc/query?q={topQuery}" },
               { key: "topPosition", label: "Its position", format: "position" },
+              ...(crawl ? [{ key: "hint", label: "What to change", format: "text" as const }] : []),
               { key: "refresh", label: "Refresh", format: "link", href: "/fixes/refresh?url={page}" },
             ]}
-            rows={closePages.map((p) => ({ page: p.page, path: closeLabel(p.page), score: Math.round(p.score), queries: p.queries, impressions: p.impressions, bestPosition: p.bestPosition, topQuery: p.topQuery.query, topPosition: p.topQuery.position, refresh: "Refresh this page" }))}
+            rows={closePages.map((p) => ({ page: p.page, path: closeLabel(p.page), score: Math.round(p.score), queries: p.queries, impressions: p.impressions, bestPosition: p.bestPosition, topQuery: p.topQuery.query, topPosition: p.topQuery.position, hint: hintFor(p.topQuery.query, p.page, bestPage.get(p.topQuery.query)), refresh: "Refresh this page" }))}
           />
         </Section>
       ) : (
@@ -123,7 +136,7 @@ export default async function OpportunitiesPage({ searchParams }: PageProps<"/gs
           actions={strikingControls}
           description={
             <>
-              <p>{`Queries at average position ${positions.min}–${positions.max} with real impressions. A small ranking gain moves them onto page one or into the top few results. ${span}.${shownNote(counts.striking, "with the most impressions")}`}</p>
+              <p>{`Queries at average position ${positions.min}–${positions.max} with real impressions. A small ranking gain moves them onto page one or into the top few results. ${span}.${shownNote(counts.striking, "with the most impressions")}${hasPage(striking) ? crawlNote : ""}`}</p>
               {noisy && <p className="mt-1 text-warn">{noisy}</p>}
             </>
           }
@@ -138,9 +151,10 @@ export default async function OpportunitiesPage({ searchParams }: PageProps<"/gs
               { key: "clicks", label: "Clicks", format: "number" },
               { key: "ctr", label: "CTR", format: "pct" },
               ...(hasPage(striking) ? [{ key: "pagePath", label: "Best page", format: "link" as const, href: "/gsc/page?url={page}" }] : []),
+              ...(crawl && hasPage(striking) ? [{ key: "hint", label: "What to change", format: "text" as const }] : []),
               ...botColumn(striking),
             ]}
-            rows={striking.map(withPage)}
+            rows={striking.map((r) => ({ ...withPage(r), hint: hintFor(r.key, bestPage.get(r.key), bestPage.get(r.key)) }))}
           />
         </Section>
       )}
