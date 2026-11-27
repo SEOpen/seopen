@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
+import { AuthCardSkeleton } from "@/components/auth/auth-card-skeleton";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 import { Card, CardBody } from "@/components/ui/card";
 import { Callout } from "@/components/ui/callout";
@@ -14,8 +16,17 @@ export async function generateMetadata({ searchParams }: PageProps<"/reset-passw
  * A link mailed before that goes through /api/auth/reset-password/<token>, which sends the token here,
  * or `error` when it has gone. An invite (src/lib/invites.ts) adds `invite=1`, for a first password.
  * A token that is used up or expired gets the expired message, not a form that would fail.
+ * The query is read inside Suspense, so the rest of the route prerenders.
  */
-export default async function ResetPasswordPage({ searchParams }: PageProps<"/reset-password">) {
+export default function ResetPasswordPage({ searchParams }: PageProps<"/reset-password">) {
+  return (
+    <Suspense fallback={<AuthCardSkeleton />}>
+      <ResetPasswordCard searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function ResetPasswordCard({ searchParams }: Pick<PageProps<"/reset-password">, "searchParams">) {
   const { token, error, invite } = await searchParams;
   const first = invite === "1";
   const usable = typeof token === "string" && !error && (await resetTokenUsable(token)) ? token : null;

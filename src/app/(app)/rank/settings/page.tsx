@@ -5,7 +5,7 @@ import { DataTable, type ColumnSpec } from "@/components/ui/data-table";
 import { Label, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Section } from "@/components/ui/section";
-import { keywordUnits, showsDollarCosts } from "@/lib/billing/gates";
+import { isInternal, keywordUnits, showsDollarCosts } from "@/lib/billing/gates";
 import { isStalePosting, POSTING_NEVER_FINISHED } from "@/lib/check-failure";
 import { plainRankFailure } from "@/lib/dataforseo/failure-copy";
 import { formatUsd, timeZoneLabel } from "@/lib/format";
@@ -35,6 +35,8 @@ export default async function RankSettingsPage() {
   const [ws, timeZone, state, runs] = await Promise.all([currentWorkspace(), currentTimeZone(), loadTracker(projectScope(project)), listRuns(projectScope(project))]);
   // Customers' checks are covered by the plan; depth matters to them through keyword units.
   const showCost = showsDollarCosts(ws);
+  // The stored error is for the people who run SEOpen; everyone else gets the plain wording.
+  const rawErrors = isInternal(ws);
   const s = state.settings;
   const active = state.keywords.filter((k) => k.active).length;
   const inactive = state.keywords.filter((k) => !k.active);
@@ -56,7 +58,7 @@ export default async function RankSettingsPage() {
     ...(showCost ? { cost: r.costUsd } : {}),
     started: r.createdAt,
     finished: r.finishedAt,
-    error: showCost ? (r.error ?? "") : plainRankFailure(r.error),
+    error: rawErrors ? (r.error ?? "") : plainRankFailure(r.error),
   }));
   const runColumns: ColumnSpec[] = [
     { key: "date", label: "Date", format: "date" },

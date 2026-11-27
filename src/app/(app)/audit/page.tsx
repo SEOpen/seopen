@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Section } from "@/components/ui/section";
 import { SpendConfirm } from "@/components/ui/spend-confirm";
 import { checkGate } from "@/lib/billing/check-gate";
-import { limitsFor, showsDollarCosts } from "@/lib/billing/gates";
+import { isInternal, limitsFor, showsDollarCosts } from "@/lib/billing/gates";
 import { spendState } from "@/lib/billing/spend";
 import { failureAgain, failureLink, pageFailure, withoutRetryAdvice } from "@/lib/check-failure";
 import { CRAWL_CANCELLED, plainCrawlFailure, plainLighthouseFailure } from "@/lib/dataforseo/failure-copy";
@@ -85,6 +85,8 @@ export default async function AuditPage() {
   const crawlFailure = lastFailed && plainCrawlFailure(lastFailed.error);
   // Customers' audits are covered by the plan: they see the page limit, not DataForSEO prices.
   const showCost = showsDollarCosts(ws);
+  // The stored error is for the people who run SEOpen; everyone else gets the plain wording.
+  const rawErrors = isInternal(ws);
   const planPages = limitsFor(ws).auditPages;
   // A refusal the banner doesn't give (this week's Free audit used, a read-only project) shows on the form before a click, not after.
   const startRefusal = spend.refusal ? null : gate("audit", project.id);
@@ -133,7 +135,7 @@ export default async function AuditPage() {
       {lastFailed && failure && crawlFailure && !running && (
         <CheckFailureCallout
           title={`Last crawl failed (${formatDateTimeZoned(lastFailed.createdAt, timeZone)})`}
-          reason={showCost && lastFailed.error ? lastFailed.error : failure.blocked ? withoutRetryAdvice(crawlFailure.message) : crawlFailure.message}
+          reason={rawErrors && lastFailed.error ? lastFailed.error : failure.blocked ? withoutRetryAdvice(crawlFailure.message) : crawlFailure.message}
           from={crawl && `Results below are from ${formatShortDate(crawl.finishedAt, timeZone)}.`}
           again={failureAgain(failure, null)}
           link={failure.retry ? { label: "Start a new crawl", href: "#new-crawl" } : failureLink(failure)}
@@ -305,7 +307,7 @@ export default async function AuditPage() {
                   <p className="text-muted">Running Lighthouse (up to 2 minutes)…</p>
                 </>
               )}
-              {lighthouse?.status === "failed" && <p className="text-bad">{showCost && lighthouse.error ? lighthouse.error : plainLighthouseFailure(lighthouse.error)}</p>}
+              {lighthouse?.status === "failed" && <p className="text-bad">{rawErrors && lighthouse.error ? lighthouse.error : plainLighthouseFailure(lighthouse.error)}</p>}
               <ActionForm action={startLighthouse}>
                 <LighthouseButton queued={lighthouse?.status === "queued"} showCost={showCost} refused={spend.refusal?.message} />
               </ActionForm>
