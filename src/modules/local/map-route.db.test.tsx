@@ -171,7 +171,7 @@ describe.skipIf(!ready)("the Local SEO map image", () => {
     expect((await mapRequest(B)).status).toBe(200);
   });
 
-  it("draws OpenStreetMap for a suspended workspace and never calls Google (CHR-320)", async () => {
+  it("draws OpenStreetMap for a suspended workspace and never calls Google", async () => {
     withGoogle();
     const { eq } = await import("drizzle-orm");
     const suspended = await seed("suspended");
