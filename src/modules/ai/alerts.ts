@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { settings, workspaces } from "@/db/schema";
 import { aiPrompts, aiResults, aiRuns } from "@/db/schema/ai";
 import { projects } from "@/db/schema/core";
-import { adminUrl, claimAlert, ownerAlertTarget } from "@/lib/billing/alerts";
+import { claimAlert, ownerAlertTarget } from "@/lib/billing/alerts";
 import { isStoredRefusal } from "@/lib/dataforseo/failure-copy";
 import { sendEmail } from "@/lib/email";
 import { env } from "@/lib/env";
@@ -84,7 +84,6 @@ export function modelAlertMessage(missing: { def: PlatformDef; offered: string[]
         `${m.def.label}: DataForSEO's model list for ${m.def.key} no longer has ${m.def.model}, the model SEOpen asks (checked ${utc(at)}). It lists ${m.offered.length} others: ${m.offered.slice(0, 12).join(", ")}${m.offered.length > 12 ? ", ..." : ""}.`,
     ),
     "Until SEOpen asks for a model that's on the list, every answer on that platform fails with a 40501 and the platform's numbers stop updating. The models are in src/modules/ai/platforms.ts. On a self-hosted copy, update SEOpen (git pull, then docker compose up -d --build).",
-    `Admin → Health lists failed jobs: ${adminUrl("/admin/health")}`,
     "This alert goes at most once a day for each model.",
   ];
   return asEmail(`SEOpen: DataForSEO no longer offers the ${names} model SEOpen asks for`, paragraphs);
@@ -168,17 +167,22 @@ export function failedPlatforms(rows: { platform: string; status: string; error:
   return out;
 }
 
-export function failedPlatformMessage(f: FailedPlatform & { runId: number; domain: string; at: Date }) {
-  const def = platformDef(f.platform)!;
-  const model = /model_name/i.test(f.error ?? "")
-    ? ` The error names model_name, so DataForSEO most likely no longer offers ${def.model}, the model SEOpen asks (src/modules/ai/platforms.ts). On a self-hosted copy, update SEOpen (git pull, then docker compose up -d --build).`
-    : "";
+/** One email for a run, however many of its platforms failed: an account problem fails them all at once. */
+export function failedPlatformMessage(run: { runId: number; domain: string; at: Date }, failed: FailedPlatform[]) {
+  const labels = failed.map((f) => platformDef(f.platform)!.label);
   const paragraphs = [
-    `All ${f.answers} ${def.label} answers in AI run ${f.runId} (${f.domain}) failed, closed at ${utc(f.at)}. The first stored error: ${f.error ?? "none stored"}.${model}`,
-    `If it's DataForSEO's side, other projects' runs fail the same way until it's fixed. Admin → Health lists failed jobs: ${adminUrl("/admin/health")}`,
-    `This alert goes at most once a day for each platform.`,
+    ...failed.map((f) => {
+      const def = platformDef(f.platform)!;
+      const model = /model_name/i.test(f.error ?? "")
+        ? ` The error names model_name, so DataForSEO most likely no longer offers ${def.model}, the model SEOpen asks (src/modules/ai/platforms.ts). On a self-hosted copy, update SEOpen (git pull, then docker compose up -d --build).`
+        : "";
+      return `All ${f.answers} ${def.label} answers in AI run ${run.runId} (${run.domain}) failed, closed at ${utc(run.at)}. The first stored error: ${f.error ?? "none stored"}.${model}`;
+    }),
+    "If it's DataForSEO's side, other projects' runs fail the same way until it's fixed.",
+    "This alert goes at most once a day for each platform.",
   ];
-  return asEmail(`SEOpen: every ${def.label} answer failed in an AI visibility run`, paragraphs);
+  const names = labels.length > 1 ? `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}` : labels[0];
+  return asEmail(`SEOpen: every ${names} answer failed in an AI visibility run`, paragraphs);
 }
 
 /**
@@ -203,15 +207,17 @@ export async function alertFailedPlatforms(runId: number, now = new Date()): Pro
       return;
     }
     const day = now.toISOString().slice(0, 10);
+    const claimed: (FailedPlatform & { key: string })[] = [];
     for (const f of failed) {
       const key = failedPlatformAlertKey(day, f.platform);
-      if (!(await claimAlert(key))) continue;
-      try {
-        await sendEmail({ to: target.to, ...failedPlatformMessage({ ...f, runId, domain, at: now }) });
-      } catch (err) {
-        await db.delete(settings).where(eq(settings.key, key));
-        throw err;
-      }
+      if (await claimAlert(key)) claimed.push({ ...f, key });
+    }
+    if (!claimed.length) return;
+    try {
+      await sendEmail({ to: target.to, ...failedPlatformMessage({ runId, domain, at: now }, claimed) });
+    } catch (err) {
+      for (const c of claimed) await db.delete(settings).where(eq(settings.key, c.key));
+      throw err;
     }
   } catch (err) {
     console.error(`[ai] couldn't send the failed platform alert for run ${runId}`, err instanceof Error ? err.message : err);

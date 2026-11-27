@@ -405,6 +405,12 @@ describe("a model DataForSEO no longer offers", () => {
     expect(plainFailure(new DataForSEOError("Invalid Field: 'model_name'.", 40501, "ai_optimization/claude/llm_responses/live")).message).toMatch(/nothing for you to fix/);
   });
 
+  it("is read back from what a failed answer stores", () => {
+    const stored = storedFailure(new DataForSEOError("Invalid Field: 'model_name'.", 40501, "ai_optimization/claude/llm_responses/live"));
+    expect(stored).toBe(dropped);
+    expect(plainAiFailure(stored)).toMatch(/nothing for you to fix/);
+  });
+
   it("leaves another 40501 a rejected prompt", () => {
     expect(storedFailureKind("40501 Invalid Field: 'user_prompt'.")).toBe("rejected");
     expect(plainAiFailure("40501 Invalid Field: 'user_prompt'.")).toMatch(/wording changes/);

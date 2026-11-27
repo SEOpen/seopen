@@ -197,6 +197,16 @@ describe.skipIf(!ready)("a platform failing a whole run", () => {
     expect(row.status).toBe("done");
   });
 
+  it("two platforms failed: one email names both", async () => {
+    for (const platform of ["chat_gpt", "claude"]) {
+      await result(platform, "failed", "40200 Payment Required.");
+      await result(platform, "failed", "40200 Payment Required.");
+    }
+    await pollRun(runId);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].subject).toMatch(/every ChatGPT and Claude answer failed/);
+  });
+
   it("answers all refused: no email", async () => {
     await result("claude", "failed", "This run would cross the workspace's research budget.");
     await result("claude", "failed", "This run would cross the workspace's research budget.");
