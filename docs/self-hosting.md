@@ -119,8 +119,11 @@ once the worker runs, since it spends DataForSEO money on a schedule.
 What it sends:
 
 - **To you, the owner:** the platform spend cap at 80% and 100%, a low DataForSEO balance, the
-  DataForSEO account out of funds or at its daily limit, any workspace spending fast, and (with
-  `CRON_SECRET`) a worker that stopped. Each goes at most once a day.
+  DataForSEO account out of funds or at its daily limit, any workspace spending fast, an AI model
+  SEOpen asks for that DataForSEO no longer offers (checked daily, for free), every answer on one AI
+  platform failing in a run, and (with `CRON_SECRET`) a worker that stopped. Each goes at most once a
+  day. A dropped model means every answer on that platform fails until SEOpen asks for another:
+  update SEOpen as the README says (back up, then `git pull` and `docker compose up -d --build`).
 - **To the people on a project:** its alert emails (a page with clicks breaks, a keyword leaves the top 10) and the
   weekly recap, once they turn them on.
 - **To anyone signing in with a password:** password reset emails, and an invite when you add an admin.

@@ -4,6 +4,7 @@ import { purgeExpiredClaims } from "@/lib/dataforseo/claims";
 import { purgeExpiredCache } from "@/lib/dataforseo/retention";
 import { enqueue } from "@/lib/jobs/boss";
 import { defineJob, type AnyJobDef } from "@/lib/jobs/types";
+import { checkAiModels } from "@/modules/ai/alerts";
 import { purgeOldInspections } from "@/modules/google/retention";
 import { purgeFinishedTasks } from "@/modules/rank/retention";
 import { sendPlatformCapAlert, sendSpendAlerts } from "./alerts";
@@ -25,9 +26,10 @@ export const jobs: AnyJobDef[] = [
   defineJob<Record<string, never>>({
     name: "billing.alerts",
     // Daily at 08:00 local: reservations a crashed call never settled, the platform cap alert, the
-    // DataForSEO balance alert, paused jobs whose monthly limit or platform cap has room again (on the
-    // 1st, say), lookup claims a crashed call left behind, Better Auth's expired sessions and old rate
-    // limit counters (both hold raw IP addresses), expired DataForSEO responses and who paid for them,
+    // DataForSEO balance alert, the AI model check (each platform's model still on DataForSEO's free
+    // models list), paused jobs whose monthly limit or platform cap has room again (on the 1st, say),
+    // lookup claims a crashed call left behind, Better Auth's expired sessions and old rate limit
+    // counters (both hold raw IP addresses), expired DataForSEO responses and who paid for them,
     // finished rank runs' tasks, URL inspections past each project's newest 200, and the owner's spend
     // alert. The free tools' own purge is `tools.purge`, a cloud job.
     cron: "0 8 * * *",
@@ -38,6 +40,7 @@ export const jobs: AnyJobDef[] = [
       const released = await releaseStaleReservations();
       const platform = await step("platform cap alert", () => sendPlatformCapAlert());
       const balance = await step("DataForSEO balance check", () => checkDataForSEOBalance());
+      const models = await step("AI model check", () => checkAiModels());
       const resumed = await step("resuming paused jobs", () => resumeLapsedPauses(enqueue));
       const claims = await step("purging lapsed lookup claims", () => purgeExpiredClaims());
       const auth = await step("purging expired sessions and rate limits", () => purgeAuthRows());
@@ -45,7 +48,7 @@ export const jobs: AnyJobDef[] = [
       const rankTasks = await step("purging finished rank tasks", () => purgeFinishedTasks());
       const inspections = await step("purging old URL inspections", () => purgeOldInspections());
       const sent = await sendSpendAlerts();
-      return { ...sent, released, platform, balance, resumed, claims, auth, lookups, rankTasks, inspections };
+      return { ...sent, released, platform, balance, models, resumed, claims, auth, lookups, rankTasks, inspections };
     },
   }),
 ];

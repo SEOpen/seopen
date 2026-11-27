@@ -14,6 +14,7 @@ import { BudgetExceededError, monthToDateSpendUsd, recordLedgerAdjustment } from
 import { aiRunFailure } from "@/lib/dataforseo/failure-copy";
 import { enqueue } from "@/lib/jobs/boss";
 import { activeProjects, inScope, projectScope, type ProjectScope } from "@/lib/workspace";
+import { alertFailedPlatforms } from "./alerts";
 import { detect, extractCitations, makeBrand, ownBrand, type Brand } from "./detect";
 import { geminiLinks, type GeminiLinks } from "./gemini-links";
 import { answerFrom } from "./parse";
@@ -542,10 +543,13 @@ async function updateRunProgress(runId: number, { finish = true }: { finish?: bo
     : nothingBack
       ? { status: "failed" as const, error: aiRunFailure((await db.selectDistinct({ error: aiResults.error }).from(aiResults).where(and(eq(aiResults.runId, runId), eq(aiResults.status, "failed")))).map((a) => a.error)), finishedAt: new Date() }
       : { status: "done" as const, finishedAt: new Date() };
-  await db
+  const closed = await db
     .update(aiRuns)
     .set({ tasksTotal: total, tasksDone: total - open, costUsd: r.cost + o.cost, ...closing })
-    .where(and(eq(aiRuns.id, runId), eq(aiRuns.status, "running")));
+    .where(and(eq(aiRuns.id, runId), eq(aiRuns.status, "running")))
+    .returning({ id: aiRuns.id });
+  // Only the call that closed the run alerts, so a poll and the run's own close can't both send it.
+  if (done && closed.length) await alertFailedPlatforms(runId);
   return done ? "done" : "pending";
 }
 
