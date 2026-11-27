@@ -592,10 +592,12 @@ export function withoutNul<T>(value: T): T {
   return value;
 }
 
-async function insertChunked<T extends object>(table: Parameters<typeof db.insert>[0], rows: T[], size = 400) {
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function insertChunked<T extends object>(tx: Tx, table: Parameters<typeof db.insert>[0], rows: T[], size = 400) {
   for (let i = 0; i < rows.length; i += size) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await db.insert(table).values(rows.slice(i, i + size).map(withoutNul) as any);
+    await tx.insert(table).values(rows.slice(i, i + size).map(withoutNul) as any);
   }
 }
 
@@ -622,13 +624,23 @@ async function importGaveUp(crawl: AuditCrawl, err: unknown): Promise<boolean> {
     .returning({ attempts: auditCrawls.importAttempts });
   if (!isDataError(err) && (row?.attempts ?? 0) < MAX_IMPORT_ATTEMPTS) return false;
   console.error(`[audit] import of crawl ${crawl.id} failed for good`, err);
-  await fail(crawl.id, new Error(CRAWL_NOT_SAVED));
+  // Not a crawl another import has finished meanwhile.
+  await db
+    .update(auditCrawls)
+    .set({ status: "failed", error: storedFailure(new Error(CRAWL_NOT_SAVED)), finishedAt: new Date() })
+    .where(and(eq(auditCrawls.id, crawl.id), inArray(auditCrawls.status, ["crawling", "importing"])));
   return true;
 }
 
-/** Copies a finished crawl into Postgres, detects issues and scores it. Safe to run again. */
+/** Copies a finished crawl into Postgres, detects issues and scores it. Safe to run again, and at the same time: only the first to finish writes. */
 export async function importCrawl(crawl: AuditCrawl, summary: DfsSummary): Promise<void> {
-  await db.update(auditCrawls).set({ status: "importing" }).where(eq(auditCrawls.id, crawl.id));
+  // A claim, not a plain write: an import that starts after another finished the crawl stops here.
+  const [claimed] = await db
+    .update(auditCrawls)
+    .set({ status: "importing" })
+    .where(and(eq(auditCrawls.id, crawl.id), inArray(auditCrawls.status, ["crawling", "importing"])))
+    .returning({ id: auditCrawls.id });
+  if (!claimed) return;
 
   const [rawPages, links, resources, nonIndexable, dupTitles, dupDescriptions] = await Promise.all([
     fetchAll<DfsPage>("on_page/pages", crawl),
@@ -680,59 +692,70 @@ export async function importCrawl(crawl: AuditCrawl, summary: DfsSummary): Promi
       };
     });
 
-  await db.transaction(async (tx) => {
+  // One transaction for the rows and the "done", holding the crawl's row lock: a second import of
+  // the same crawl (two worker processes) waits here, then finds it finished and writes nothing.
+  // Without it both deleted, both inserted, and the second hit a unique index and closed a good
+  // crawl as failed.
+  const wrote = await db.transaction(async (tx) => {
+    const [current] = await tx.select({ status: auditCrawls.status }).from(auditCrawls).where(eq(auditCrawls.id, crawl.id)).for("update");
+    if (!current || current.status === "done" || current.status === "failed") return false;
     for (const t of [auditPages, auditIssues, auditLinks, auditResources, auditDuplicates, auditNonIndexable]) {
       await tx.delete(t).where(and(eq(t.workspaceId, crawl.workspaceId), eq(t.crawlId, crawl.id)));
     }
-  });
-  const owner = { workspaceId: crawl.workspaceId, crawlId: crawl.id };
-  await insertChunked(auditPages, pageRows, 300);
-  await insertChunked(auditIssues, issues.map((i) => ({ ...i, ...owner })));
-  await insertChunked(
-    auditLinks,
-    links.map((l) => ({
-      ...owner,
-      fromUrl: l.link_from,
-      toUrl: l.link_to,
-      direction: l.direction,
-      linkType: l.type,
-      dofollow: l.dofollow,
-      isBroken: l.is_broken,
-      anchor: l.text?.slice(0, 500) ?? null,
-    })),
-  );
-  await insertChunked(
-    auditResources,
-    resources.map((r) => ({
-      ...owner,
-      url: r.url,
-      resourceType: r.resource_type,
-      statusCode: r.status_code,
-      sizeBytes: r.size,
-      checks: Object.entries(r.checks ?? {})
-        .filter(([, v]) => v === true)
-        .map(([k]) => k),
-    })),
-  );
-  await insertChunked(auditDuplicates, duplicates.map((d) => ({ ...d, ...owner })));
-  await insertChunked(auditNonIndexable, nonIndexable.map((n) => ({ ...owner, url: n.url, reason: n.reason })));
+    const owner = { workspaceId: crawl.workspaceId, crawlId: crawl.id };
+    await insertChunked(tx, auditPages, pageRows, 300);
+    await insertChunked(tx, auditIssues, issues.map((i) => ({ ...i, ...owner })));
+    await insertChunked(
+      tx,
+      auditLinks,
+      links.map((l) => ({
+        ...owner,
+        fromUrl: l.link_from,
+        toUrl: l.link_to,
+        direction: l.direction,
+        linkType: l.type,
+        dofollow: l.dofollow,
+        isBroken: l.is_broken,
+        anchor: l.text?.slice(0, 500) ?? null,
+      })),
+    );
+    await insertChunked(
+      tx,
+      auditResources,
+      resources.map((r) => ({
+        ...owner,
+        url: r.url,
+        resourceType: r.resource_type,
+        statusCode: r.status_code,
+        sizeBytes: r.size,
+        checks: Object.entries(r.checks ?? {})
+          .filter(([, v]) => v === true)
+          .map(([k]) => k),
+      })),
+    );
+    await insertChunked(tx, auditDuplicates, duplicates.map((d) => ({ ...d, ...owner })));
+    await insertChunked(tx, auditNonIndexable, nonIndexable.map((n) => ({ ...owner, url: n.url, reason: n.reason })));
 
-  await db
-    .update(auditCrawls)
-    .set({
-      status: "done",
-      error: null,
-      pagesCrawled: summary.crawl_status?.pages_crawled ?? pages.length,
-      pagesInQueue: 0,
-      healthScore: score.score,
-      errors: score.errors,
-      warnings: score.warnings,
-      notices: score.notices,
-      pagesWithIssues: score.pagesWithIssues,
-      summary: withoutNul({ ...summarySubset(summary), access: access.report }),
-      finishedAt: new Date(),
-    })
-    .where(eq(auditCrawls.id, crawl.id));
+    await tx
+      .update(auditCrawls)
+      .set({
+        status: "done",
+        error: null,
+        pagesCrawled: summary.crawl_status?.pages_crawled ?? pages.length,
+        pagesInQueue: 0,
+        healthScore: score.score,
+        errors: score.errors,
+        warnings: score.warnings,
+        notices: score.notices,
+        pagesWithIssues: score.pagesWithIssues,
+        summary: withoutNul({ ...summarySubset(summary), access: access.report }),
+        finishedAt: new Date(),
+      })
+      .where(eq(auditCrawls.id, crawl.id));
+    return true;
+  });
+  // Another import finished it first and has run the fix sync and alerts, so they don't run twice.
+  if (!wrote) return;
 
   // The audit is done whatever happens here: a failed sync leaves the fix list a crawl behind, and the next one catches up.
   await syncAuditFixes(crawl, issues, [...pages.map((p) => p.url), ...resources.map((r) => r.url)]).catch((err) => console.error("[fixes.sync]", err));
@@ -800,7 +823,8 @@ export async function pollCrawl(crawl: AuditCrawl): Promise<"running" | "done" |
       await fail(crawl.id, err);
       return "failed";
     }
-    if (crawl.status === "importing") await db.update(auditCrawls).set({ status: "crawling" }).where(eq(auditCrawls.id, crawl.id));
+    // Only a crawl still importing: one another import has just finished stays done.
+    if (crawl.status === "importing") await db.update(auditCrawls).set({ status: "crawling" }).where(and(eq(auditCrawls.id, crawl.id), eq(auditCrawls.status, "importing")));
     throw err;
   }
 }
